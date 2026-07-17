@@ -1,0 +1,51 @@
+ai:
+    platform:
+        openai:
+            api_key: '%env(OPENAI_API_KEY)%'
+            http_client: openai.client
+
+    agent:
+        video_transcriber:
+            platform: 'ai.platform.openai'
+            model: 'gpt-4o-mini'
+            tools: false
+            prompt: 'Return only the verbatim transcription of the audio/video. No commentary, no corrections, no summaries.'
+            speech:
+                speech_to_text_platform: 'ai.platform.openai'
+                stt_model: 'whisper-1'
+
+        video_summarizer:
+            platform: 'ai.platform.openai'
+            model: 'gpt-4o-mini'
+            tools: false
+            prompt: 'Summarize the following video transcript in 200 characters or fewer. Return only the summary text, no preamble.'
+
+        video_search:
+            platform: 'ai.platform.openai'
+            model: 'gpt-4o-mini'
+            prompt: |
+                You are a helpful assistant for a video content library.
+                Use the similarity_search tool to find relevant videos based on the user's query.
+                Present your findings clearly using markdown. List each matching video with its title and what the video is about.
+                If no relevant videos are found, say so clearly and suggest the user try different search terms.
+            tools:
+                - 'App\Tool\VideoSimilaritySearch'
+
+    store:
+        postgres:
+            video_transcript_embeds:
+                dbal_connection: 'doctrine.dbal.default_connection'
+                table_name: 'video_transcript_embeds'
+                distance: 'cosine'
+                setup_options:
+                    vector_size: 1536
+
+    vectorizer:
+        openai_ada:
+            platform: 'ai.platform.openai'
+            model: 'text-embedding-ada-002'
+
+    retriever:
+        video_transcript_embeds:
+            store: 'ai.store.postgres.video_transcript_embeds'
+            vectorizer: 'ai.vectorizer.openai_ada'

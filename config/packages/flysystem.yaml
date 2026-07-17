@@ -1,0 +1,9 @@
+services:
+    League\Flysystem\Local\LocalFilesystemAdapter:
+        arguments:
+            $location: '%kernel.project_dir%/var/uploads'
+            $lazyRootCreation: true
+
+    League\Flysystem\Filesystem:
+        arguments:
+            $adapter: '@League\Flysystem\Local\LocalFilesystemAdapter'

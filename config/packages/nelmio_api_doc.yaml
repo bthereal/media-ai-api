@@ -1,0 +1,12 @@
+nelmio_api_doc:
+    documentation:
+        info:
+            title: Content AI API
+            description: Internal API for the content-ai service
+            version: 1.0.0
+    areas:
+        default:
+            path_patterns:
+                - ^/api
+    models:
+        use_jms: false

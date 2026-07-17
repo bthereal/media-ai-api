@@ -1,0 +1,26 @@
+security:
+    providers:
+        jwt:
+            lexik_jwt: ~
+
+    firewalls:
+        dev:
+            pattern: ^/(_profiler|_wdt|assets|build)/
+            security: false
+
+        api:
+            pattern: ^/api
+            stateless: true
+            provider: jwt
+            jwt: ~
+
+    access_control:
+        - { path: ^/api/content/.+/stream$, roles: PUBLIC_ACCESS }
+        - { path: ^/api/content/.+/thumbnail$, roles: PUBLIC_ACCESS }
+        - { path: ^/api, roles: IS_AUTHENTICATED_FULLY }
+
+when@test:
+    security:
+        firewalls:
+            api:
+                security: false
