@@ -20,6 +20,7 @@
         "symfony/ai-postgres-store": "^0.8.0",
         "symfony/ai-store": "^0.8.0",
         "symfony/console": "8.0.*",
+        "symfony/doctrine-messenger": "8.0.*",
         "symfony/dotenv": "8.0.*",
         "symfony/flex": "^2",
         "symfony/framework-bundle": "8.0.*",

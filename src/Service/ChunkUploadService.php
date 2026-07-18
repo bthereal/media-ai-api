@@ -100,12 +100,15 @@ class ChunkUploadService
                 }
             }
 
-            $assembled = '';
+            $dest = tmpfile();
             for ($i = 0; $i < $totalChunks; ++$i) {
-                $assembled .= $this->filesystem->read("temp/{$uploadId}/{$i}");
+                $src = $this->filesystem->readStream("temp/{$uploadId}/{$i}");
+                stream_copy_to_stream($src, $dest);
+                fclose($src);
             }
-
-            $this->filesystem->write("{$uploadId}/{$filename}", $assembled);
+            rewind($dest);
+            $this->filesystem->writeStream("{$uploadId}/{$filename}", $dest);
+            fclose($dest);
             $this->filesystem->deleteDirectory("temp/{$uploadId}");
         } catch (MissingChunksException $e) {
             throw $e;

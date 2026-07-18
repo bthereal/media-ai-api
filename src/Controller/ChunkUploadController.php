@@ -118,8 +118,11 @@ class ChunkUploadController extends AbstractController
         }
 
         if ($assembled) {
-            $fileContent = $this->filesystem->read("{$uploadId}/{$filename}");
-            $fileHash = hash('sha256', $fileContent);
+            $hashStream = $this->filesystem->readStream("{$uploadId}/{$filename}");
+            $hashCtx = hash_init('sha256');
+            hash_update_stream($hashCtx, $hashStream);
+            $fileHash = hash_final($hashCtx);
+            fclose($hashStream);
 
             $existing = $this->contentRepository->findByHash($fileHash);
             if (null !== $existing) {
@@ -132,7 +135,8 @@ class ChunkUploadController extends AbstractController
                 ]);
             }
 
-            $duration = $this->extractDuration($fileContent);
+            $fileSize = $this->filesystem->fileSize("{$uploadId}/{$filename}");
+            $duration = $this->extractDuration($uploadId, $filename);
 
             $transcription = new VideoTranscription($uploadId, $filename);
             $title = trim(urldecode((string) $request->request->get('title', '')));
@@ -141,7 +145,7 @@ class ChunkUploadController extends AbstractController
                 filename: $filename,
                 uploadId: $uploadId,
                 mimeType: 'video/mp4',
-                fileSize: strlen($fileContent),
+                fileSize: $fileSize,
                 fileHash: $fileHash,
                 duration: $duration,
             );
@@ -173,11 +177,15 @@ class ChunkUploadController extends AbstractController
         return $this->json(['ok' => true, 'uploadId' => $uploadId, 'chunkIndex' => $chunkIndex]);
     }
 
-    private function extractDuration(string $fileContent): ?float
+    private function extractDuration(string $uploadId, string $filename): ?float
     {
         $tmpFile = tempnam(sys_get_temp_dir(), 'meta_');
         try {
-            file_put_contents($tmpFile, $fileContent);
+            $src = $this->filesystem->readStream("{$uploadId}/{$filename}");
+            $dest = fopen($tmpFile, 'wb');
+            stream_copy_to_stream($src, $dest);
+            fclose($src);
+            fclose($dest);
 
             return $this->metadataExtractor->extractDuration($tmpFile);
         } finally {
