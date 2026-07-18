@@ -8,7 +8,6 @@ use App\Entity\VideoTranscription;
 use OpenApi\Attributes as OA;
 
 #[OA\Schema(
-    schema: 'TranscriptionResponse',
     required: ['status'],
 )]
 final readonly class TranscriptionDto
