@@ -12,7 +12,6 @@ use Symfony\Component\Uid\Uuid;
 
 #[ORM\Entity(repositoryClass: ContentRepository::class)]
 #[ORM\Table(name: 'content')]
-#[ORM\UniqueConstraint(name: 'uq_content_file_hash', columns: ['file_hash'])]
 class Content
 {
     #[ORM\Id]

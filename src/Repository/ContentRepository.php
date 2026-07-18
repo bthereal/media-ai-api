@@ -20,7 +20,7 @@ class ContentRepository extends ServiceEntityRepository
 
     public function findByHash(string $fileHash): ?Content
     {
-        return $this->findOneBy(['fileHash' => $fileHash]);
+        return $this->findOneBy(['fileHash' => $fileHash, 'deletedAt' => null]);
     }
 
     /** @return Content[] */

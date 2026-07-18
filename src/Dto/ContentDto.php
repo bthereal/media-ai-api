@@ -9,7 +9,6 @@ use Nelmio\ApiDocBundle\Attribute\Model;
 use OpenApi\Attributes as OA;
 
 #[OA\Schema(
-    schema: 'ContentResponse',
     required: ['ok', 'id', 'filename', 'uploadId', 'mimeType', 'fileSize', 'hasThumbnail', 'createdAt'],
 )]
 final readonly class ContentDto

@@ -8,7 +8,6 @@ use Nelmio\ApiDocBundle\Attribute\Model;
 use OpenApi\Attributes as OA;
 
 #[OA\Schema(
-    schema: 'ContentListResponse',
     required: ['ok', 'items', 'total', 'page', 'perPage', 'totalPages', 'hasNext', 'hasPrev'],
 )]
 final readonly class ContentListDto

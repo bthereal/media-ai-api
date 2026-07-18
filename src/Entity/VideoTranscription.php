@@ -97,7 +97,7 @@ class VideoTranscription
         return $this->summary;
     }
 
-    public function setSummary(string $summary): void
+    public function setSummary(?string $summary): void
     {
         $this->summary = $summary;
     }
