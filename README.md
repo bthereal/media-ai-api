@@ -1,7 +1,5 @@
 # Video Content Library - Symfony AI Bundle Exploration
 
-https://github.com/user-attachments/assets/67fb6551-8090-4e81-a0f9-834416de3e30
-
 A personal project built to explore the [Symfony AI Bundle](https://symfony.com/bundles/ai) in a real-world context. The goal was to wire the bundle's features into a working application that does something genuinely useful: upload MP4 videos, automatically transcribe and summarise them using AI, and then search across the entire library using natural language.
 
 The project deliberately covers multiple bundle features in a single codebase - speech-to-text, LLM agents, vector embeddings, semantic retrieval, and tool use - so they can be compared and understood in relation to each other rather than in isolation.
