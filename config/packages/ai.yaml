@@ -20,6 +20,34 @@ ai:
             tools: false
             prompt: 'Summarize the following video transcript in 200 characters or fewer. Return only the summary text, no preamble.'
 
+        video_translator:
+            platform: 'ai.platform.openai'
+            model: 'gpt-4o-mini'
+            tools: false
+            prompt: |
+                You translate video caption lines. You are given a JSON array of strings, each one caption line
+                in its original language, in order. Translate EVERY line into the requested target language,
+                preserving the exact same array length and order — never merge, split, drop, or add lines.
+                Respond with ONLY a JSON array of the translated strings, no markdown fences, no commentary.
+
+        thumbnail_picker:
+            platform: 'ai.platform.openai'
+            model: 'gpt-4o-mini'
+            tools: false
+            prompt: 'You are picking the best thumbnail frame from a set of candidate video frames. Respond with only the number of your chosen frame.'
+
+        video_chapters:
+            platform: 'ai.platform.openai'
+            model: 'gpt-4o-mini'
+            tools: false
+            prompt: |
+                You are analyzing a timestamped video transcript, given as lines of "[m:ss] text".
+                Group it into 3 to 8 named chapters that reflect the video's structure (e.g. "Intro", "Pricing discussion", "Q&A").
+                Cover the entire transcript with no gaps or overlaps — the first chapter starts at 0:00 and the last chapter ends at the final timestamp.
+                If the transcript is too short or unstructured to split meaningfully, return a single chapter covering the whole thing.
+                Respond with ONLY a JSON array, no markdown fences, no commentary, in this exact shape:
+                [{"title": "...", "startSeconds": 0, "endSeconds": 42.5}, ...]
+
         video_search:
             platform: 'ai.platform.openai'
             model: 'gpt-4o-mini'

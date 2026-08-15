@@ -12,14 +12,23 @@ class ThumbnailGenerator
     private const THUMBNAIL_PATH = 'thumbnail.jpg';
     private const WIDTH = 640;
 
-    public function __construct(private readonly FilesystemOperator $filesystem) {}
+    /** @var list<float> */
+    private const CANDIDATE_PERCENTAGES = [0.10, 0.30, 0.50, 0.70];
+
+    public function __construct(
+        private readonly FilesystemOperator $filesystem,
+        private readonly ThumbnailPickerService $pickerService,
+    ) {
+    }
 
     /**
-     * Reads the video from Flysystem, runs ffmpeg to extract a frame,
-     * and writes thumbnail.jpg back to Flysystem under the same uploadId prefix.
+     * Reads the video from Flysystem, extracts several candidate frames, uses a
+     * vision model to pick the most visually representative one (falling back to
+     * the earliest candidate if the AI call fails), and writes the winner back to
+     * Flysystem as thumbnail.jpg under the same uploadId prefix.
      * Returns true on success, false on any failure (non-fatal).
      */
-    public function generate(string $uploadId, string $filename): bool
+    public function generate(string $uploadId, string $filename, ?float $duration = null): bool
     {
         try {
             $videoContent = $this->filesystem->read("{$uploadId}/{$filename}");
@@ -28,32 +37,39 @@ class ThumbnailGenerator
         }
 
         $tmpVideo = tempnam(sys_get_temp_dir(), 'thumb_v_').'.mp4';
-        $tmpJpeg = tempnam(sys_get_temp_dir(), 'thumb_j_').'.jpg';
+        file_put_contents($tmpVideo, $videoContent);
+
+        $candidates = [];
 
         try {
-            file_put_contents($tmpVideo, $videoContent);
-
-            if (!$this->runFfmpeg($tmpVideo, $tmpJpeg, seekSeconds: 1)) {
-                // Retry at the very first frame for videos shorter than 1 s
-                $this->runFfmpeg($tmpVideo, $tmpJpeg, seekSeconds: 0);
+            foreach (self::candidateSeekTimes($duration) as $seekSeconds) {
+                $tmpJpeg = tempnam(sys_get_temp_dir(), 'thumb_j_').'.jpg';
+                if ($this->runFfmpeg($tmpVideo, $tmpJpeg, $seekSeconds)) {
+                    $candidates[] = $tmpJpeg;
+                } else {
+                    @unlink($tmpJpeg);
+                }
             }
 
-            if (!file_exists($tmpJpeg) || filesize($tmpJpeg) === 0) {
+            if ([] === $candidates) {
                 return false;
             }
 
+            $bestPath = $this->pickBest($candidates);
+
             $this->filesystem->write(
                 "{$uploadId}/".self::THUMBNAIL_PATH,
-                file_get_contents($tmpJpeg),
+                file_get_contents($bestPath),
             );
 
             return true;
         } catch (\Throwable) {
             return false;
         } finally {
-            foreach ([$tmpVideo, $tmpJpeg] as $f) {
-                if (file_exists($f)) {
-                    unlink($f);
+            unlink($tmpVideo);
+            foreach ($candidates as $candidate) {
+                if (file_exists($candidate)) {
+                    unlink($candidate);
                 }
             }
         }
@@ -64,7 +80,45 @@ class ThumbnailGenerator
         return "{$uploadId}/".self::THUMBNAIL_PATH;
     }
 
-    private function runFfmpeg(string $input, string $output, int $seekSeconds): bool
+    /**
+     * Seek offsets (in seconds) at which to extract candidate frames. Percentage-based
+     * when the duration is known; falls back to the original fixed 1s/0s attempts
+     * (deduped) for very short or duration-unknown videos.
+     *
+     * @return list<float>
+     */
+    public static function candidateSeekTimes(?float $duration): array
+    {
+        if (null === $duration || $duration <= 0) {
+            return [1.0, 0.0];
+        }
+
+        $times = array_map(static fn (float $p): float => round($duration * $p, 2), self::CANDIDATE_PERCENTAGES);
+
+        return array_values(array_unique($times));
+    }
+
+    /**
+     * @param list<string> $candidates absolute paths to candidate JPEGs
+     */
+    private function pickBest(array $candidates): string
+    {
+        if (1 === count($candidates)) {
+            return $candidates[0];
+        }
+
+        try {
+            $index = $this->pickerService->pickBest($candidates);
+
+            return $candidates[$index];
+        } catch (\Throwable) {
+            // Vision call failed or returned something unparseable — degrade to the
+            // earliest candidate rather than losing the thumbnail entirely.
+            return $candidates[0];
+        }
+    }
+
+    private function runFfmpeg(string $input, string $output, float $seekSeconds): bool
     {
         $args = [
             'ffmpeg',

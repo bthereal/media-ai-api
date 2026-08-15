@@ -6,10 +6,17 @@ namespace App\Controller;
 
 use App\Dto\ContentDto;
 use App\Dto\ContentListDto;
+use App\Dto\ProgressDto;
+use App\Dto\VideoAnalyticsDto;
+use App\Entity\WatchEvent;
 use App\Repository\ContentRepository;
 use App\Security\PermissionChecker;
+use App\Service\CaptionLanguages;
+use App\Service\CaptionTranslationService;
 use App\Service\ThumbnailGenerator;
+use App\Service\VideoAnalyticsService;
 use App\Service\VideoSummaryService;
+use App\Service\VttFormatter;
 use Doctrine\ORM\EntityManagerInterface;
 use League\Flysystem\FilesystemOperator;
 use Nelmio\ApiDocBundle\Attribute\Model;
@@ -31,6 +38,9 @@ class ContentController extends AbstractController
         private readonly PermissionChecker $permissionChecker,
         private readonly FilesystemOperator $filesystem,
         private readonly VideoSummaryService $summaryService,
+        private readonly VideoAnalyticsService $analyticsService,
+        private readonly ThumbnailGenerator $thumbnailGenerator,
+        private readonly CaptionTranslationService $captionTranslationService,
         #[Autowire('%kernel.project_dir%')]
         private readonly string $projectDir,
     ) {
@@ -334,6 +344,235 @@ class ContentController extends AbstractController
         return new Response($jpeg, Response::HTTP_OK, [
             'Content-Type' => 'image/jpeg',
             'Cache-Control' => 'public, max-age=86400, immutable',
+        ]);
+    }
+
+    #[Route('/api/content/{id}/thumbnail', name: 'api_content_regenerate_thumbnail', methods: ['POST'])]
+    #[OA\Post(
+        path: '/api/content/{id}/thumbnail',
+        operationId: 'regenerateContentThumbnail',
+        summary: 'Regenerate the thumbnail — extracts fresh candidate frames and has a vision model pick the best one',
+        tags: ['Content'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string', format: 'uuid')),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'Thumbnail regenerated', content: new OA\JsonContent(ref: new Model(type: ContentDto::class))),
+            new OA\Response(response: 404, description: 'Content not found'),
+            new OA\Response(response: 422, description: 'Thumbnail generation failed (no readable video frames)'),
+        ],
+    )]
+    public function regenerateThumbnail(string $id): JsonResponse
+    {
+        if (!$this->permissionChecker->hasPermission('content:update')) {
+            return $this->json(['ok' => false, 'error' => 'Forbidden. Requires content:update permission.'], Response::HTTP_FORBIDDEN);
+        }
+
+        $content = $this->contentRepository->find($id);
+
+        if (null === $content || null !== $content->getDeletedAt()) {
+            return $this->json(['ok' => false, 'error' => 'Content not found.'], Response::HTTP_NOT_FOUND);
+        }
+
+        $ok = $this->thumbnailGenerator->generate($content->getUploadId(), $content->getFilename(), $content->getDuration());
+
+        if (!$ok) {
+            return $this->json(['ok' => false, 'error' => 'Thumbnail generation failed.'], Response::HTTP_UNPROCESSABLE_ENTITY);
+        }
+
+        $content->setHasThumbnail(true);
+        $this->entityManager->flush();
+
+        return $this->json(ContentDto::fromEntity($content));
+    }
+
+    #[Route('/api/content/{id}/watch-events', name: 'api_content_watch_event', methods: ['POST'])]
+    #[OA\Post(
+        path: '/api/content/{id}/watch-events',
+        operationId: 'recordWatchEvent',
+        summary: 'Record a playback event (play, pause, seek, progress heartbeat, or completion) for watch analytics — publicly reachable, no auth required',
+        tags: ['Analytics'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string', format: 'uuid')),
+        ],
+        requestBody: new OA\RequestBody(
+            required: true,
+            content: new OA\JsonContent(
+                required: ['eventType', 'positionSeconds'],
+                properties: [
+                    new OA\Property(property: 'eventType', type: 'string', enum: WatchEvent::EVENT_TYPES),
+                    new OA\Property(property: 'positionSeconds', type: 'number', format: 'float', minimum: 0),
+                ],
+            ),
+        ),
+        responses: [
+            new OA\Response(
+                response: 201,
+                description: 'Event recorded',
+                content: new OA\JsonContent(properties: [new OA\Property(property: 'ok', type: 'boolean', example: true)]),
+            ),
+            new OA\Response(response: 404, description: 'Content not found'),
+            new OA\Response(response: 422, description: 'Validation error'),
+        ],
+    )]
+    public function recordWatchEvent(string $id, Request $request): JsonResponse
+    {
+        if (!$this->permissionChecker->hasPermission('content:read')) {
+            return $this->json(['ok' => false, 'error' => 'Forbidden. Requires content:read permission.'], Response::HTTP_FORBIDDEN);
+        }
+
+        $content = $this->contentRepository->find($id);
+
+        if (null === $content || null !== $content->getDeletedAt()) {
+            return $this->json(['ok' => false, 'error' => 'Content not found.'], Response::HTTP_NOT_FOUND);
+        }
+
+        $body = json_decode($request->getContent(), true) ?? [];
+        $eventType = (string) ($body['eventType'] ?? '');
+        $positionSeconds = $body['positionSeconds'] ?? null;
+
+        if (!in_array($eventType, WatchEvent::EVENT_TYPES, true)) {
+            return $this->json(
+                ['ok' => false, 'error' => 'eventType must be one of: '.implode(', ', WatchEvent::EVENT_TYPES).'.'],
+                Response::HTTP_UNPROCESSABLE_ENTITY,
+            );
+        }
+
+        if (!is_numeric($positionSeconds) || (float) $positionSeconds < 0) {
+            return $this->json(['ok' => false, 'error' => 'positionSeconds must be a non-negative number.'], Response::HTTP_UNPROCESSABLE_ENTITY);
+        }
+
+        $viewerId = $this->getUser()?->getUserIdentifier() ?? 'anonymous';
+
+        $event = new WatchEvent($content, $viewerId, $eventType, (float) $positionSeconds);
+        $this->entityManager->persist($event);
+        $this->entityManager->flush();
+
+        return $this->json(['ok' => true], Response::HTTP_CREATED);
+    }
+
+    #[Route('/api/content/{id}/analytics', name: 'api_content_analytics', methods: ['GET'])]
+    #[OA\Get(
+        path: '/api/content/{id}/analytics',
+        operationId: 'getContentAnalytics',
+        summary: 'Get watch analytics (views, completion rate, watch time, retention curve) for a single video',
+        tags: ['Analytics'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string', format: 'uuid')),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'Analytics computed', content: new OA\JsonContent(ref: new Model(type: VideoAnalyticsDto::class))),
+            new OA\Response(response: 404, description: 'Content not found'),
+        ],
+    )]
+    public function analytics(string $id): JsonResponse
+    {
+        if (!$this->permissionChecker->hasPermission('content:read')) {
+            return $this->json(['ok' => false, 'error' => 'Forbidden. Requires content:read permission.'], Response::HTTP_FORBIDDEN);
+        }
+
+        $content = $this->contentRepository->find($id);
+
+        if (null === $content || null !== $content->getDeletedAt()) {
+            return $this->json(['ok' => false, 'error' => 'Content not found.'], Response::HTTP_NOT_FOUND);
+        }
+
+        return $this->json($this->analyticsService->buildVideoAnalytics($content));
+    }
+
+    #[Route('/api/content/{id}/progress', name: 'api_content_progress', methods: ['GET'])]
+    #[OA\Get(
+        path: '/api/content/{id}/progress',
+        operationId: 'getContentProgress',
+        summary: 'Get the current viewer\'s last playback position, for "resume where you left off" — publicly reachable, no auth required',
+        tags: ['Analytics'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string', format: 'uuid')),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'Progress computed', content: new OA\JsonContent(ref: new Model(type: ProgressDto::class))),
+            new OA\Response(response: 404, description: 'Content not found'),
+        ],
+    )]
+    public function progress(string $id): JsonResponse
+    {
+        if (!$this->permissionChecker->hasPermission('content:read')) {
+            return $this->json(['ok' => false, 'error' => 'Forbidden. Requires content:read permission.'], Response::HTTP_FORBIDDEN);
+        }
+
+        $content = $this->contentRepository->find($id);
+
+        if (null === $content || null !== $content->getDeletedAt()) {
+            return $this->json(['ok' => false, 'error' => 'Content not found.'], Response::HTTP_NOT_FOUND);
+        }
+
+        $viewerId = $this->getUser()?->getUserIdentifier() ?? 'anonymous';
+
+        return $this->json(new ProgressDto(
+            ok: true,
+            positionSeconds: $this->analyticsService->getResumePosition($content, $viewerId),
+        ));
+    }
+
+    #[Route('/api/content/{id}/captions/{lang}.vtt', name: 'api_content_captions', methods: ['GET'], requirements: ['lang' => '[a-zA-Z]+'])]
+    #[OA\Get(
+        path: '/api/content/{id}/captions/{lang}.vtt',
+        operationId: 'getContentCaptions',
+        summary: 'Serve WebVTT captions — {lang} is either the video\'s native language code or a supported translation target, publicly accessible for the native <track> element',
+        tags: ['Content'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string', format: 'uuid')),
+            new OA\Parameter(name: 'lang', in: 'path', required: true, schema: new OA\Schema(type: 'string', example: 'en')),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'WebVTT captions file'),
+            new OA\Response(response: 404, description: 'Content/transcription not found, or unsupported language'),
+            new OA\Response(response: 502, description: 'Translation failed'),
+        ],
+    )]
+    public function captions(string $id, string $lang): Response
+    {
+        if (!$this->permissionChecker->hasPermission('content:read')) {
+            return $this->json(['ok' => false, 'error' => 'Forbidden. Requires content:read permission.'], Response::HTTP_FORBIDDEN);
+        }
+
+        $content = $this->contentRepository->find($id);
+
+        if (null === $content || null !== $content->getDeletedAt()) {
+            return new Response(null, Response::HTTP_NOT_FOUND);
+        }
+
+        $transcription = $content->getTranscription();
+
+        if (null === $transcription || null === $transcription->getSegments() || null === $transcription->getLanguage()) {
+            return new Response(null, Response::HTTP_NOT_FOUND);
+        }
+
+        $nativeCode = CaptionLanguages::codeForWhisperLanguage($transcription->getLanguage());
+
+        if ($lang === $nativeCode) {
+            $vtt = VttFormatter::format($transcription->getSegments());
+        } elseif (in_array($lang, CaptionLanguages::TRANSLATION_TARGETS, true)) {
+            $segments = $transcription->getTranslation($lang);
+
+            if (null === $segments) {
+                try {
+                    $segments = $this->captionTranslationService->translate($transcription->getSegments(), $lang);
+                } catch (\Throwable) {
+                    return new Response(null, Response::HTTP_BAD_GATEWAY);
+                }
+                $transcription->setTranslation($lang, $segments);
+                $this->entityManager->flush();
+            }
+
+            $vtt = VttFormatter::format($segments);
+        } else {
+            return new Response(null, Response::HTTP_NOT_FOUND);
+        }
+
+        return new Response($vtt, Response::HTTP_OK, [
+            'Content-Type' => 'text/vtt; charset=utf-8',
+            'Cache-Control' => 'public, max-age=3600',
         ]);
     }
 }

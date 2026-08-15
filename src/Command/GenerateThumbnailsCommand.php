@@ -47,7 +47,7 @@ class GenerateThumbnailsCommand extends Command
 
         foreach ($items as $content) {
             $label = sprintf('%s (%s)', $content->getFilename(), $content->getUploadId());
-            $ok = $this->thumbnailGenerator->generate($content->getUploadId(), $content->getFilename());
+            $ok = $this->thumbnailGenerator->generate($content->getUploadId(), $content->getFilename(), $content->getDuration());
 
             if ($ok) {
                 $content->setHasThumbnail(true);

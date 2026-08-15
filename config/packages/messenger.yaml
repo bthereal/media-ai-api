@@ -9,3 +9,4 @@ framework:
         routing:
             App\Message\TranscribeVideoMessage:   async
             App\Message\EmbedVideoSummaryMessage: async
+            App\Message\GenerateChaptersMessage:  async

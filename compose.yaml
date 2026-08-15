@@ -11,6 +11,20 @@ services:
       database:
         condition: service_healthy
 
+  messenger-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - .:/var/www/html
+    environment:
+      DATABASE_URL: "postgresql://app:!ChangeMe!@database:5432/app?serverVersion=18&charset=utf8"
+    command: php bin/console messenger:consume async -vv --time-limit=3600 --memory-limit=256M
+    restart: unless-stopped
+    depends_on:
+      database:
+        condition: service_healthy
+
   nginx:
     image: nginx:alpine
     ports:

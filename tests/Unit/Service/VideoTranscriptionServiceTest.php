@@ -12,10 +12,12 @@ use League\Flysystem\UnableToReadFile;
 use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
+use Symfony\AI\Platform\Bridge\OpenAi\Whisper\Result\Segment;
+use Symfony\AI\Platform\Bridge\OpenAi\Whisper\Result\Transcript;
 use Symfony\AI\Platform\PlatformInterface;
 use Symfony\AI\Platform\Result\DeferredResult;
 use Symfony\AI\Platform\Result\InMemoryRawResult;
-use Symfony\AI\Platform\Result\TextResult;
+use Symfony\AI\Platform\Result\ObjectResult;
 use Symfony\AI\Platform\ResultConverterInterface;
 
 #[AllowMockObjectsWithoutExpectations]
@@ -42,10 +44,10 @@ class VideoTranscriptionServiceTest extends TestCase
         );
     }
 
-    private function makeDeferredResult(string $text): DeferredResult
+    private function makeDeferredResult(Transcript $transcript): DeferredResult
     {
         $converter = $this->createMock(ResultConverterInterface::class);
-        $converter->method('convert')->willReturn(new TextResult($text));
+        $converter->method('convert')->willReturn(new ObjectResult($transcript));
         $converter->method('getTokenUsageExtractor')->willReturn(null);
 
         return new DeferredResult($converter, new InMemoryRawResult());
@@ -66,15 +68,30 @@ class VideoTranscriptionServiceTest extends TestCase
             ->method('extractAudio')
             ->willReturn($tmpAudio);
 
+        $transcript = new Transcript(
+            'Hello world transcription.',
+            'en',
+            12.5,
+            [new Segment(0.0, 6.0, 'Hello world'), new Segment(6.0, 12.5, 'transcription.')],
+        );
+
         $this->platform
             ->expects($this->once())
             ->method('invoke')
-            ->with('whisper-1', $this->anything())
-            ->willReturn($this->makeDeferredResult('Hello world transcription.'));
+            ->with('whisper-1', $this->anything(), ['verbose' => true])
+            ->willReturn($this->makeDeferredResult($transcript));
 
         $result = $this->service->transcribe(self::UPLOAD_ID, self::FILENAME);
 
-        $this->assertSame('Hello world transcription.', $result);
+        $this->assertSame('Hello world transcription.', $result['text']);
+        $this->assertSame(
+            [
+                ['start' => 0.0, 'end' => 6.0, 'text' => 'Hello world'],
+                ['start' => 6.0, 'end' => 12.5, 'text' => 'transcription.'],
+            ],
+            $result['segments'],
+        );
+        $this->assertSame('en', $result['language']);
     }
 
     public function testTranscribeThrowsOnFilesystemReadFailure(): void

@@ -38,6 +38,35 @@ class VideoTranscription
     #[ORM\Column(type: Types::TEXT, nullable: true)]
     private ?string $summary = null;
 
+    /**
+     * @var list<array{start: float, end: float, text: string}>|null
+     */
+    #[ORM\Column(type: Types::JSON, nullable: true)]
+    private ?array $segments = null;
+
+    /**
+     * Null until the post-transcription chapter-generation step has run; an empty
+     * array means it ran but produced no chapters (e.g. too little transcript).
+     *
+     * @var list<array{title: string, startSeconds: float, endSeconds: float}>|null
+     */
+    #[ORM\Column(type: Types::JSON, nullable: true)]
+    private ?array $chapters = null;
+
+    /**
+     * Raw language name as detected by Whisper (e.g. "english") — null until completed.
+     */
+    #[ORM\Column(type: Types::STRING, length: 50, nullable: true)]
+    private ?string $language = null;
+
+    /**
+     * Cached AI-translated captions, keyed by ISO 639-1 target code.
+     *
+     * @var array<string, list<array{start: float, end: float, text: string}>>|null
+     */
+    #[ORM\Column(type: Types::JSON, nullable: true)]
+    private ?array $translations = null;
+
     #[ORM\Column(type: Types::DATETIME_IMMUTABLE)]
     private \DateTimeImmutable $createdAt;
 
@@ -107,11 +136,62 @@ class VideoTranscription
         $this->status = 'processing';
     }
 
-    public function markCompleted(string $transcription): void
+    /**
+     * @param list<array{start: float, end: float, text: string}> $segments
+     */
+    public function markCompleted(string $transcription, array $segments = [], ?string $language = null): void
     {
         $this->status = 'completed';
         $this->transcription = $transcription;
+        $this->segments = $segments;
+        $this->language = $language;
         $this->completedAt = new \DateTimeImmutable();
+    }
+
+    public function getLanguage(): ?string
+    {
+        return $this->language;
+    }
+
+    /**
+     * @return list<array{start: float, end: float, text: string}>|null
+     */
+    public function getTranslation(string $langCode): ?array
+    {
+        return $this->translations[$langCode] ?? null;
+    }
+
+    /**
+     * @param list<array{start: float, end: float, text: string}> $segments
+     */
+    public function setTranslation(string $langCode, array $segments): void
+    {
+        $this->translations ??= [];
+        $this->translations[$langCode] = $segments;
+    }
+
+    /**
+     * @return list<array{start: float, end: float, text: string}>|null
+     */
+    public function getSegments(): ?array
+    {
+        return $this->segments;
+    }
+
+    /**
+     * @return list<array{title: string, startSeconds: float, endSeconds: float}>|null
+     */
+    public function getChapters(): ?array
+    {
+        return $this->chapters;
+    }
+
+    /**
+     * @param list<array{title: string, startSeconds: float, endSeconds: float}> $chapters
+     */
+    public function setChapters(array $chapters): void
+    {
+        $this->chapters = $chapters;
     }
 
     public function markFailed(string $errorMessage): void

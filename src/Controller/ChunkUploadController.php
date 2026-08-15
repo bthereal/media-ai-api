@@ -157,7 +157,7 @@ class ChunkUploadController extends AbstractController
             $this->entityManager->persist($content);
             $this->entityManager->flush();
 
-            $hasThumbnail = $this->thumbnailGenerator->generate($uploadId, $filename);
+            $hasThumbnail = $this->thumbnailGenerator->generate($uploadId, $filename, $duration);
             if ($hasThumbnail) {
                 $content->setHasThumbnail(true);
                 $this->entityManager->flush();

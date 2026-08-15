@@ -23,6 +23,7 @@ RUN apk add --no-cache \
 
 COPY opcache.ini /usr/local/etc/php/conf.d/opcache.ini
 COPY uploads.ini /usr/local/etc/php/conf.d/uploads.ini
+COPY memory.ini /usr/local/etc/php/conf.d/memory.ini
 
 COPY --from=composer /app/vendor /var/www/html/vendor
 

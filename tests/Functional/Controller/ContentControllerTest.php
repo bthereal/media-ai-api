@@ -259,4 +259,83 @@ class ContentControllerTest extends WebTestCase
         rmdir("{$uploadsDir}/{$uploadId}");
         unlink($tmpFile);
     }
+
+    public function testCaptionsReturns404ForUnknownContent(): void
+    {
+        $client = static::getClient();
+        $client->request('GET', self::ENDPOINT.'/550e8400-e29b-41d4-a716-446655440000/captions/en.vtt');
+
+        $this->assertSame(404, $client->getResponse()->getStatusCode());
+    }
+
+    public function testCaptionsReturns404WhenTranscriptionHasNoSegments(): void
+    {
+        $content = new Content(
+            filename: 'video.mp4',
+            uploadId: '550e8400-e29b-41d4-a716-446655440000',
+            mimeType: 'video/mp4',
+            fileSize: 1024,
+            fileHash: str_repeat('e', 64),
+        );
+        $this->em->persist($content);
+        $this->em->flush();
+
+        $client = static::getClient();
+        $client->request('GET', self::ENDPOINT.'/'.(string) $content->getId().'/captions/en.vtt');
+
+        $this->assertSame(404, $client->getResponse()->getStatusCode());
+    }
+
+    public function testCaptionsServesNativeLanguageAsWebVtt(): void
+    {
+        $transcription = new VideoTranscription('550e8400-e29b-41d4-a716-446655440000', 'video.mp4');
+        $transcription->markCompleted(
+            'Hello world.',
+            [['start' => 0.0, 'end' => 5.0, 'text' => 'Hello world.']],
+            'english',
+        );
+
+        $content = new Content(
+            filename: 'video.mp4',
+            uploadId: '550e8400-e29b-41d4-a716-446655440000',
+            mimeType: 'video/mp4',
+            fileSize: 1024,
+            fileHash: str_repeat('f', 64),
+        );
+        $content->setTranscription($transcription);
+        $this->em->persist($content);
+        $this->em->flush();
+
+        $client = static::getClient();
+        $client->request('GET', self::ENDPOINT.'/'.(string) $content->getId().'/captions/en.vtt');
+
+        $response = $client->getResponse();
+        $this->assertSame(200, $response->getStatusCode());
+        $this->assertStringContainsString('text/vtt', $response->headers->get('Content-Type') ?? '');
+        $this->assertStringStartsWith('WEBVTT', $response->getContent());
+        $this->assertStringContainsString('Hello world.', $response->getContent());
+        $this->assertStringContainsString('00:00:00.000 --> 00:00:05.000', $response->getContent());
+    }
+
+    public function testCaptionsReturns404ForUnsupportedLanguage(): void
+    {
+        $transcription = new VideoTranscription('550e8400-e29b-41d4-a716-446655440000', 'video.mp4');
+        $transcription->markCompleted('Hello.', [['start' => 0.0, 'end' => 5.0, 'text' => 'Hello.']], 'english');
+
+        $content = new Content(
+            filename: 'video.mp4',
+            uploadId: '550e8400-e29b-41d4-a716-446655440000',
+            mimeType: 'video/mp4',
+            fileSize: 1024,
+            fileHash: str_repeat('g', 64),
+        );
+        $content->setTranscription($transcription);
+        $this->em->persist($content);
+        $this->em->flush();
+
+        $client = static::getClient();
+        $client->request('GET', self::ENDPOINT.'/'.(string) $content->getId().'/captions/xx.vtt');
+
+        $this->assertSame(404, $client->getResponse()->getStatusCode());
+    }
 }
