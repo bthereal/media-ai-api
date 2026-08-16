@@ -30,7 +30,14 @@ class VideoSimilaritySearch
         foreach ($docs as $doc) {
             $id = (string) $doc->getId();
             $content = $this->contentRepository->find($id);
-            $title = $content?->getTitle() ?? $content?->getFilename() ?? 'Untitled';
+
+            // Defense in depth: archived content's embeddings are removed when it's
+            // deleted, but skip defensively in case a stale entry ever slips through.
+            if (null === $content || null !== $content->getDeletedAt()) {
+                continue;
+            }
+
+            $title = $content->getTitle() ?? $content->getFilename();
 
             $metadata = $doc->getMetadata();
             $text = $metadata->hasText() ? ($metadata->getText() ?? '') : '';

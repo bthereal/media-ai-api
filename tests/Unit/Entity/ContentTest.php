@@ -81,4 +81,36 @@ class ContentTest extends TestCase
         $this->assertGreaterThanOrEqual($before, $content->getCreatedAt());
         $this->assertLessThanOrEqual($after, $content->getCreatedAt());
     }
+
+    public function testArchiveSetsDeletedAt(): void
+    {
+        $content = new Content(
+            filename: self::FILENAME,
+            uploadId: self::UPLOAD_ID,
+            mimeType: self::MIME_TYPE,
+            fileSize: self::FILE_SIZE,
+            fileHash: self::FILE_HASH,
+        );
+
+        $this->assertNull($content->getDeletedAt());
+        $content->archive();
+        $this->assertNotNull($content->getDeletedAt());
+    }
+
+    public function testUnarchiveClearsDeletedAt(): void
+    {
+        $content = new Content(
+            filename: self::FILENAME,
+            uploadId: self::UPLOAD_ID,
+            mimeType: self::MIME_TYPE,
+            fileSize: self::FILE_SIZE,
+            fileHash: self::FILE_HASH,
+        );
+
+        $content->archive();
+        $this->assertNotNull($content->getDeletedAt());
+
+        $content->unarchive();
+        $this->assertNull($content->getDeletedAt());
+    }
 }

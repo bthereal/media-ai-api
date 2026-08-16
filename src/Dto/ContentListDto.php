@@ -8,12 +8,13 @@ use Nelmio\ApiDocBundle\Attribute\Model;
 use OpenApi\Attributes as OA;
 
 #[OA\Schema(
-    required: ['ok', 'items', 'total', 'page', 'perPage', 'totalPages', 'hasNext', 'hasPrev'],
+    required: ['ok', 'items', 'total', 'page', 'perPage', 'totalPages', 'hasNext', 'hasPrev', 'availableCategories'],
 )]
 final readonly class ContentListDto
 {
     /**
-     * @param ContentDto[] $items
+     * @param ContentDto[]  $items
+     * @param list<string>  $availableCategories
      */
     public function __construct(
         #[OA\Property(type: 'boolean', example: true)]
@@ -39,6 +40,9 @@ final readonly class ContentListDto
 
         #[OA\Property(type: 'boolean')]
         public bool $hasPrev,
+
+        #[OA\Property(type: 'array', items: new OA\Items(type: 'string'), description: 'Distinct categories present across the whole (unfiltered) library, for building facet filters')]
+        public array $availableCategories,
     ) {
     }
 }

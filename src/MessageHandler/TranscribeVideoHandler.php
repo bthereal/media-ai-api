@@ -7,6 +7,7 @@ namespace App\MessageHandler;
 use App\Entity\VideoTranscription;
 use App\Message\EmbedVideoSummaryMessage;
 use App\Message\GenerateChaptersMessage;
+use App\Message\GenerateTagsMessage;
 use App\Message\TranscribeVideoMessage;
 use App\Repository\ContentRepository;
 use App\Service\VideoTranscriptionService;
@@ -60,6 +61,7 @@ class TranscribeVideoHandler
         if (null !== $content) {
             $this->messageBus->dispatch(new EmbedVideoSummaryMessage((string) $content->getId()));
             $this->messageBus->dispatch(new GenerateChaptersMessage((string) $content->getId()));
+            $this->messageBus->dispatch(new GenerateTagsMessage((string) $content->getId()));
         }
     }
 }

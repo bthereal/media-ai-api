@@ -10,3 +10,4 @@ framework:
             App\Message\TranscribeVideoMessage:   async
             App\Message\EmbedVideoSummaryMessage: async
             App\Message\GenerateChaptersMessage:  async
+            App\Message\GenerateTagsMessage:      async

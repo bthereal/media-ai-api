@@ -8,6 +8,7 @@ use App\Entity\Content;
 use App\Entity\VideoTranscription;
 use App\Exception\StorageException;
 use App\Exception\ValidationException;
+use App\Message\EmbedVideoSummaryMessage;
 use App\Message\TranscribeVideoMessage;
 use App\Repository\ContentRepository;
 use App\Security\PermissionChecker;
@@ -131,6 +132,29 @@ class ChunkUploadController extends AbstractController
                     'uploadId' => $uploadId,
                     'chunkIndex' => $chunkIndex,
                     'contentId' => (string) $existing->getId(),
+                    'duplicate' => true,
+                ]);
+            }
+
+            // Reactivate a previously-deleted upload of the same file rather than
+            // creating a duplicate Content row (and a duplicate search embedding) —
+            // its transcription/chapters/tags are still valid since the file is
+            // byte-identical, only the search embedding (removed on archive) needs restoring.
+            $archived = $this->contentRepository->findArchivedByHash($fileHash);
+            if (null !== $archived) {
+                $archived->unarchive();
+                $this->entityManager->flush();
+
+                $archivedTranscription = $archived->getTranscription();
+                if (null !== $archivedTranscription && 'completed' === $archivedTranscription->getStatus() && null !== $archivedTranscription->getTranscription()) {
+                    $this->messageBus->dispatch(new EmbedVideoSummaryMessage((string) $archived->getId()));
+                }
+
+                return $this->json([
+                    'ok' => true,
+                    'uploadId' => $uploadId,
+                    'chunkIndex' => $chunkIndex,
+                    'contentId' => (string) $archived->getId(),
                     'duplicate' => true,
                 ]);
             }

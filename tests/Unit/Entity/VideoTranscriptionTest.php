@@ -94,4 +94,33 @@ class VideoTranscriptionTest extends TestCase
         $this->assertSame($esSegments, $transcription->getTranslation('es'));
         $this->assertSame($frSegments, $transcription->getTranslation('fr'));
     }
+
+    public function testTagsAndCategoryAreNullByDefault(): void
+    {
+        $transcription = new VideoTranscription(self::UPLOAD_ID, self::FILENAME);
+
+        $this->assertNull($transcription->getTags());
+        $this->assertNull($transcription->getCategory());
+    }
+
+    public function testSetTagsAndCategoryStoresBoth(): void
+    {
+        $transcription = new VideoTranscription(self::UPLOAD_ID, self::FILENAME);
+
+        $transcription->setTagsAndCategory(['ai', 'video'], 'Tutorial');
+
+        $this->assertSame(['ai', 'video'], $transcription->getTags());
+        $this->assertSame('Tutorial', $transcription->getCategory());
+    }
+
+    public function testSetTagsAndCategoryDistinguishesEmptyFromNotYetGenerated(): void
+    {
+        $transcription = new VideoTranscription(self::UPLOAD_ID, self::FILENAME);
+
+        $transcription->setTagsAndCategory([], null);
+
+        $this->assertSame([], $transcription->getTags());
+        $this->assertNotNull($transcription->getTags());
+        $this->assertNull($transcription->getCategory());
+    }
 }

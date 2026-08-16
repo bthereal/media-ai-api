@@ -7,6 +7,10 @@ namespace App\Tests\Functional\Controller;
 use App\Entity\Content;
 use App\Entity\VideoTranscription;
 use Doctrine\ORM\EntityManagerInterface;
+use Symfony\AI\Platform\Vector\NullVector;
+use Symfony\AI\Store\Document\Metadata;
+use Symfony\AI\Store\Document\VectorDocument;
+use Symfony\AI\Store\RetrieverInterface;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 
 class ContentControllerTest extends WebTestCase
@@ -34,6 +38,7 @@ class ContentControllerTest extends WebTestCase
     {
         $conn = $this->em->getConnection();
         $conn->executeStatement('TRUNCATE TABLE content, video_transcription RESTART IDENTITY CASCADE');
+        $conn->executeStatement('TRUNCATE TABLE video_transcript_embeds');
     }
 
     public function testListReturnsEmptyPage(): void
@@ -51,6 +56,57 @@ class ContentControllerTest extends WebTestCase
         $this->assertSame(1, $body['totalPages']);
         $this->assertFalse($body['hasNext']);
         $this->assertFalse($body['hasPrev']);
+        $this->assertSame([], $body['availableCategories']);
+    }
+
+    public function testListFiltersByCategoryAndExposesAvailableCategories(): void
+    {
+        $tutorial = new VideoTranscription('550e8400-e29b-41d4-a716-446655440000', 'tutorial.mp4');
+        $tutorial->markCompleted('Transcript.');
+        $tutorial->setTagsAndCategory(['ai'], 'Tutorial');
+
+        $interview = new VideoTranscription('660e8400-e29b-41d4-a716-446655440001', 'interview.mp4');
+        $interview->markCompleted('Transcript.');
+        $interview->setTagsAndCategory(['guest'], 'Interview');
+
+        $tutorialContent = new Content(
+            filename: 'tutorial.mp4',
+            uploadId: '550e8400-e29b-41d4-a716-446655440000',
+            mimeType: 'video/mp4',
+            fileSize: 1024,
+            fileHash: str_repeat('t', 64),
+        );
+        $tutorialContent->setTranscription($tutorial);
+
+        $interviewContent = new Content(
+            filename: 'interview.mp4',
+            uploadId: '660e8400-e29b-41d4-a716-446655440001',
+            mimeType: 'video/mp4',
+            fileSize: 1024,
+            fileHash: str_repeat('v', 64),
+        );
+        $interviewContent->setTranscription($interview);
+
+        $this->em->persist($tutorialContent);
+        $this->em->persist($interviewContent);
+        $this->em->flush();
+
+        $client = static::getClient();
+
+        // Unfiltered: both present, both categories listed as available
+        $client->request('GET', self::ENDPOINT);
+        $body = json_decode($client->getResponse()->getContent(), true);
+        $this->assertCount(2, $body['items']);
+        $this->assertSame(['Interview', 'Tutorial'], $body['availableCategories']);
+
+        // Filtered: only the matching video
+        $client->request('GET', self::ENDPOINT.'?category=Tutorial');
+        $body = json_decode($client->getResponse()->getContent(), true);
+        $this->assertCount(1, $body['items']);
+        $this->assertSame('tutorial.mp4', $body['items'][0]['filename']);
+        $this->assertSame(1, $body['total']);
+        // availableCategories always reflects the whole library, not just the filtered slice
+        $this->assertSame(['Interview', 'Tutorial'], $body['availableCategories']);
     }
 
     public function testListReturnsPaginatedResults(): void
@@ -337,5 +393,177 @@ class ContentControllerTest extends WebTestCase
         $client->request('GET', self::ENDPOINT.'/'.(string) $content->getId().'/captions/xx.vtt');
 
         $this->assertSame(404, $client->getResponse()->getStatusCode());
+    }
+
+    public function testRelatedReturns404ForUnknownContent(): void
+    {
+        $client = static::getClient();
+        $client->request('GET', self::ENDPOINT.'/550e8400-e29b-41d4-a716-446655440000/related');
+
+        $this->assertSame(404, $client->getResponse()->getStatusCode());
+    }
+
+    public function testRelatedReturnsEmptyListWhenTranscriptionNotCompleted(): void
+    {
+        $content = new Content(
+            filename: 'video.mp4',
+            uploadId: '550e8400-e29b-41d4-a716-446655440000',
+            mimeType: 'video/mp4',
+            fileSize: 1024,
+            fileHash: str_repeat('h', 64),
+        );
+        $this->em->persist($content);
+        $this->em->flush();
+
+        // No retriever override: if the controller called it despite no completed
+        // transcript, this would hit the real (unconfigured) service and error out.
+        $client = static::getClient();
+        $client->request('GET', self::ENDPOINT.'/'.(string) $content->getId().'/related');
+
+        $this->assertSame(200, $client->getResponse()->getStatusCode());
+        $body = json_decode($client->getResponse()->getContent(), true);
+        $this->assertTrue($body['ok']);
+        $this->assertSame([], $body['items']);
+    }
+
+    public function testRelatedExcludesSelfAndSkipsContentMissingFromDb(): void
+    {
+        $transcription = new VideoTranscription('550e8400-e29b-41d4-a716-446655440000', 'video.mp4');
+        $transcription->markCompleted('A video about pgvector semantic search.', [], 'english');
+
+        $content = new Content(
+            filename: 'video.mp4',
+            uploadId: '550e8400-e29b-41d4-a716-446655440000',
+            mimeType: 'video/mp4',
+            fileSize: 1024,
+            fileHash: str_repeat('i', 64),
+        );
+        $content->setTranscription($transcription);
+        $this->em->persist($content);
+
+        $other = new Content(
+            filename: 'other.mp4',
+            uploadId: '660e8400-e29b-41d4-a716-446655440001',
+            mimeType: 'video/mp4',
+            fileSize: 2048,
+            fileHash: str_repeat('j', 64),
+        );
+        $this->em->persist($other);
+        $this->em->flush();
+
+        $selfId = (string) $content->getId();
+        $otherId = (string) $other->getId();
+        $missingId = '770e8400-e29b-41d4-a716-446655440002';
+
+        $this->setRetriever([
+            new VectorDocument($selfId, new NullVector(), new Metadata()),
+            new VectorDocument($missingId, new NullVector(), new Metadata()),
+            new VectorDocument($otherId, new NullVector(), new Metadata()),
+        ]);
+
+        $client = static::getClient();
+        $client->request('GET', self::ENDPOINT.'/'.$selfId.'/related');
+
+        $this->assertSame(200, $client->getResponse()->getStatusCode());
+        $body = json_decode($client->getResponse()->getContent(), true);
+        $this->assertTrue($body['ok']);
+        $this->assertCount(1, $body['items']);
+        $this->assertSame($otherId, $body['items'][0]['id']);
+        $this->assertSame('other.mp4', $body['items'][0]['filename']);
+    }
+
+    public function testRelatedCapsAtFiveResults(): void
+    {
+        $transcription = new VideoTranscription('550e8400-e29b-41d4-a716-446655440000', 'video.mp4');
+        $transcription->markCompleted('A video about pgvector semantic search.', [], 'english');
+
+        $content = new Content(
+            filename: 'video.mp4',
+            uploadId: '550e8400-e29b-41d4-a716-446655440000',
+            mimeType: 'video/mp4',
+            fileSize: 1024,
+            fileHash: str_repeat('k', 64),
+        );
+        $content->setTranscription($transcription);
+        $this->em->persist($content);
+
+        $docs = [];
+        for ($i = 1; $i <= 7; ++$i) {
+            $other = new Content(
+                filename: "other{$i}.mp4",
+                uploadId: sprintf('660e8400-e29b-41d4-a716-%012d', $i),
+                mimeType: 'video/mp4',
+                fileSize: 1024,
+                fileHash: str_pad("k{$i}", 64, '0', \STR_PAD_LEFT),
+            );
+            $this->em->persist($other);
+            $this->em->flush();
+            $docs[] = new VectorDocument((string) $other->getId(), new NullVector(), new Metadata());
+        }
+        $this->em->flush();
+
+        $this->setRetriever($docs);
+
+        $client = static::getClient();
+        $client->request('GET', self::ENDPOINT.'/'.(string) $content->getId().'/related');
+
+        $body = json_decode($client->getResponse()->getContent(), true);
+        $this->assertCount(5, $body['items']);
+    }
+
+    /**
+     * @param list<VectorDocument> $docs
+     */
+    private function setRetriever(array $docs): void
+    {
+        static::getContainer()->set('ai.retriever.video_transcript_embeds', new class($docs) implements RetrieverInterface {
+            /**
+             * @param list<VectorDocument> $docs
+             */
+            public function __construct(private readonly array $docs)
+            {
+            }
+
+            public function retrieve(string $query, array $options = []): iterable
+            {
+                return $this->docs;
+            }
+        });
+    }
+
+    public function testDeleteRemovesVectorEmbedding(): void
+    {
+        $content = new Content(
+            filename: 'video.mp4',
+            uploadId: '550e8400-e29b-41d4-a716-446655440000',
+            mimeType: 'video/mp4',
+            fileSize: 1024,
+            fileHash: str_repeat('m', 64),
+        );
+        $this->em->persist($content);
+        $this->em->flush();
+
+        $contentId = (string) $content->getId();
+        $this->insertFakeEmbedding($contentId);
+
+        $countBefore = (int) $this->em->getConnection()->fetchOne('SELECT COUNT(*) FROM video_transcript_embeds WHERE id = :id', ['id' => $contentId]);
+        $this->assertSame(1, $countBefore);
+
+        $client = static::getClient();
+        $client->request('DELETE', self::ENDPOINT.'/'.$contentId);
+
+        $this->assertSame(200, $client->getResponse()->getStatusCode());
+
+        $countAfter = (int) $this->em->getConnection()->fetchOne('SELECT COUNT(*) FROM video_transcript_embeds WHERE id = :id', ['id' => $contentId]);
+        $this->assertSame(0, $countAfter);
+    }
+
+    private function insertFakeEmbedding(string $contentId): void
+    {
+        $vector = '['.implode(',', array_fill(0, 1536, 0.001)).']';
+        $this->em->getConnection()->executeStatement(
+            'INSERT INTO video_transcript_embeds (id, metadata, embedding) VALUES (:id, :metadata, :embedding)',
+            ['id' => $contentId, 'metadata' => '{}', 'embedding' => $vector],
+        );
     }
 }

@@ -67,6 +67,21 @@ class VideoTranscription
     #[ORM\Column(type: Types::JSON, nullable: true)]
     private ?array $translations = null;
 
+    /**
+     * Null until the post-transcription tagging step has run; an empty array
+     * means it ran but produced no tags.
+     *
+     * @var list<string>|null
+     */
+    #[ORM\Column(type: Types::JSON, nullable: true)]
+    private ?array $tags = null;
+
+    /**
+     * Single AI-assigned category (e.g. "Product Demo") — null until tagged.
+     */
+    #[ORM\Column(type: Types::STRING, length: 100, nullable: true)]
+    private ?string $category = null;
+
     #[ORM\Column(type: Types::DATETIME_IMMUTABLE)]
     private \DateTimeImmutable $createdAt;
 
@@ -192,6 +207,28 @@ class VideoTranscription
     public function setChapters(array $chapters): void
     {
         $this->chapters = $chapters;
+    }
+
+    /**
+     * @return list<string>|null
+     */
+    public function getTags(): ?array
+    {
+        return $this->tags;
+    }
+
+    /**
+     * @param list<string> $tags
+     */
+    public function setTagsAndCategory(array $tags, ?string $category): void
+    {
+        $this->tags = $tags;
+        $this->category = $category;
+    }
+
+    public function getCategory(): ?string
+    {
+        return $this->category;
     }
 
     public function markFailed(string $errorMessage): void

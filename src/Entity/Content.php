@@ -141,6 +141,16 @@ class Content
         $this->deletedAt = new \DateTimeImmutable();
     }
 
+    /**
+     * Un-archives a previously-deleted Content — used when an identical file
+     * (matched by hash) is uploaded again, so it's reactivated in place rather
+     * than creating a duplicate row and a duplicate search embedding.
+     */
+    public function unarchive(): void
+    {
+        $this->deletedAt = null;
+    }
+
     public function getTranscription(): ?VideoTranscription
     {
         return $this->transcription;

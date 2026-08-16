@@ -9,6 +9,7 @@ use App\Entity\VideoTranscription;
 use App\Exception\TranscriptionException;
 use App\Message\EmbedVideoSummaryMessage;
 use App\Message\GenerateChaptersMessage;
+use App\Message\GenerateTagsMessage;
 use App\Message\TranscribeVideoMessage;
 use App\MessageHandler\TranscribeVideoHandler;
 use App\Repository\ContentRepository;
@@ -81,7 +82,7 @@ class TranscribeVideoHandlerTest extends TestCase
 
         $dispatchedMessages = [];
         $this->bus
-            ->expects($this->exactly(2))
+            ->expects($this->exactly(3))
             ->method('dispatch')
             ->willReturnCallback(function (object $message) use (&$dispatchedMessages) {
                 $dispatchedMessages[] = $message;
@@ -98,6 +99,7 @@ class TranscribeVideoHandlerTest extends TestCase
         $this->assertNotNull($record->getCompletedAt());
         $this->assertInstanceOf(EmbedVideoSummaryMessage::class, $dispatchedMessages[0]);
         $this->assertInstanceOf(GenerateChaptersMessage::class, $dispatchedMessages[1]);
+        $this->assertInstanceOf(GenerateTagsMessage::class, $dispatchedMessages[2]);
     }
 
     public function testHandlerSetsStatusFailedAndRethrowsOnException(): void

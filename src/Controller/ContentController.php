@@ -7,6 +7,7 @@ namespace App\Controller;
 use App\Dto\ContentDto;
 use App\Dto\ContentListDto;
 use App\Dto\ProgressDto;
+use App\Dto\RelatedVideosDto;
 use App\Dto\VideoAnalyticsDto;
 use App\Entity\WatchEvent;
 use App\Repository\ContentRepository;
@@ -21,6 +22,7 @@ use Doctrine\ORM\EntityManagerInterface;
 use League\Flysystem\FilesystemOperator;
 use Nelmio\ApiDocBundle\Attribute\Model;
 use OpenApi\Attributes as OA;
+use Symfony\AI\Store\RetrieverInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
@@ -41,6 +43,8 @@ class ContentController extends AbstractController
         private readonly VideoAnalyticsService $analyticsService,
         private readonly ThumbnailGenerator $thumbnailGenerator,
         private readonly CaptionTranslationService $captionTranslationService,
+        #[Autowire(service: 'ai.retriever.video_transcript_embeds')]
+        private readonly RetrieverInterface $retriever,
         #[Autowire('%kernel.project_dir%')]
         private readonly string $projectDir,
     ) {
@@ -54,6 +58,7 @@ class ContentController extends AbstractController
         tags: ['Content'],
         parameters: [
             new OA\Parameter(name: 'page', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 1)),
+            new OA\Parameter(name: 'category', in: 'query', required: false, description: 'Filter to videos with this exact AI-assigned category', schema: new OA\Schema(type: 'string')),
         ],
         responses: [
             new OA\Response(
@@ -71,8 +76,10 @@ class ContentController extends AbstractController
 
         $page = max(1, (int) $request->query->get('page', '1'));
         $perPage = 12;
+        $category = $request->query->get('category');
+        $category = null !== $category && '' !== $category ? (string) $category : null;
 
-        ['items' => $items, 'total' => $total] = $this->contentRepository->findPaginated($page, $perPage);
+        ['items' => $items, 'total' => $total] = $this->contentRepository->findPaginated($page, $perPage, $category);
 
         $totalPages = max(1, (int) ceil($total / $perPage));
 
@@ -85,6 +92,7 @@ class ContentController extends AbstractController
             totalPages: $totalPages,
             hasNext: $page < $totalPages,
             hasPrev: $page > 1,
+            availableCategories: $this->contentRepository->findDistinctCategories(),
         ));
     }
 
@@ -161,6 +169,7 @@ class ContentController extends AbstractController
 
         $content->archive();
         $this->entityManager->flush();
+        $this->summaryService->removeEmbedding((string) $content->getId());
 
         return $this->json(ContentDto::fromEntity($content));
     }
@@ -574,5 +583,66 @@ class ContentController extends AbstractController
             'Content-Type' => 'text/vtt; charset=utf-8',
             'Cache-Control' => 'public, max-age=3600',
         ]);
+    }
+
+    #[Route('/api/content/{id}/related', name: 'api_content_related', methods: ['GET'])]
+    #[OA\Get(
+        path: '/api/content/{id}/related',
+        operationId: 'getRelatedContent',
+        summary: '"More like this" — semantically similar videos via the existing pgvector transcript embeddings, no extra AI cost beyond what upload already spends embedding the transcript',
+        tags: ['Content'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string', format: 'uuid')),
+        ],
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: 'Related videos, nearest first — empty until this video has a completed, embedded transcript',
+                content: new OA\JsonContent(ref: new Model(type: RelatedVideosDto::class)),
+            ),
+            new OA\Response(response: 404, description: 'Content not found'),
+        ],
+    )]
+    public function related(string $id): JsonResponse
+    {
+        if (!$this->permissionChecker->hasPermission('content:read')) {
+            return $this->json(['ok' => false, 'error' => 'Forbidden. Requires content:read permission.'], Response::HTTP_FORBIDDEN);
+        }
+
+        $content = $this->contentRepository->find($id);
+
+        if (null === $content || null !== $content->getDeletedAt()) {
+            return $this->json(['ok' => false, 'error' => 'Content not found.'], Response::HTTP_NOT_FOUND);
+        }
+
+        $transcription = $content->getTranscription();
+
+        if (null === $transcription || 'completed' !== $transcription->getStatus() || null === $transcription->getTranscription()) {
+            return $this->json(new RelatedVideosDto(ok: true, items: []));
+        }
+
+        // Ask for one extra — the video's own transcript is itself in the store and
+        // will typically rank as its own top match, so it needs filtering out below.
+        $matches = $this->retriever->retrieve($transcription->getTranscription(), ['limit' => 6]);
+
+        $related = [];
+        foreach ($matches as $doc) {
+            if (count($related) >= 5) {
+                break;
+            }
+
+            if ((string) $doc->getId() === (string) $content->getId()) {
+                continue;
+            }
+
+            $matchedContent = $this->contentRepository->find((string) $doc->getId());
+            if (null === $matchedContent || null !== $matchedContent->getDeletedAt()) {
+                continue;
+            }
+
+            $related[] = ContentDto::fromEntity($matchedContent);
+        }
+
+        return $this->json(new RelatedVideosDto(ok: true, items: $related));
     }
 }

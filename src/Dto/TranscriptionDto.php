@@ -37,6 +37,12 @@ final readonly class TranscriptionDto
 
         #[OA\Property(ref: new Model(type: CaptionsInfoDto::class), nullable: true, description: 'Null until transcription has completed with timed segments')]
         public ?CaptionsInfoDto $captions,
+
+        #[OA\Property(type: 'array', items: new OA\Items(type: 'string'), nullable: true, description: 'AI-extracted topic tags — null until the post-transcription tagging step has run, empty if it ran but produced none')]
+        public ?array $tags,
+
+        #[OA\Property(type: 'string', nullable: true, description: 'AI-assigned category (e.g. "Product Demo") — null until tagged')]
+        public ?string $category,
     ) {
     }
 
@@ -65,6 +71,8 @@ final readonly class TranscriptionDto
             completedAt: $transcription->getCompletedAt()?->format(\DateTimeInterface::ATOM),
             chapters: null !== $chapters ? array_map(ChapterDto::fromArray(...), $chapters) : null,
             captions: $captions,
+            tags: $transcription->getTags(),
+            category: $transcription->getCategory(),
         );
     }
 }
