@@ -71,14 +71,16 @@ jobs:
           name: vendor
           path: vendor
 
+      # actions/upload-artifact doesn't reliably preserve the executable bit, so these
+      # are invoked via `php vendor/bin/...` rather than executed directly.
       - name: PHP syntax lint
-        run: vendor/bin/parallel-lint src tests
+        run: php vendor/bin/parallel-lint src tests
 
       - name: PHPCS (PSR-12)
-        run: vendor/bin/phpcs
+        run: php vendor/bin/phpcs
 
       - name: Psalm static analysis
-        run: vendor/bin/psalm --no-progress --output-format=github
+        run: php vendor/bin/psalm --no-progress --output-format=github
 
   test:
     name: Test
@@ -146,4 +148,4 @@ jobs:
         run: php bin/console messenger:setup-transports --env=test
 
       - name: Run test suite
-        run: vendor/bin/phpunit
+        run: php vendor/bin/phpunit
