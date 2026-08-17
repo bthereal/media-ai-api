@@ -52,7 +52,7 @@ class ContentRepository extends ServiceEntityRepository
      *
      * @return array{items: array<Content>, total: int}
      */
-    public function findPaginated(int $page, int $perPage, ?string $category = null): array
+    public function findPaginated(int $page, int $perPage, ?string $category = null, ?string $ownerId = null): array
     {
         $countQb = $this->createQueryBuilder('c')
             ->select('COUNT(c.id)')
@@ -67,6 +67,11 @@ class ContentRepository extends ServiceEntityRepository
         if (null !== $category) {
             $countQb->join('c.transcription', 't')->andWhere('t.category = :category')->setParameter('category', $category);
             $itemsQb->join('c.transcription', 't')->andWhere('t.category = :category')->setParameter('category', $category);
+        }
+
+        if (null !== $ownerId) {
+            $countQb->andWhere('c.ownerId = :ownerId')->setParameter('ownerId', $ownerId);
+            $itemsQb->andWhere('c.ownerId = :ownerId')->setParameter('ownerId', $ownerId);
         }
 
         $total = (int) $countQb->getQuery()->getSingleScalarResult();

@@ -12,6 +12,7 @@ use App\Message\EmbedVideoSummaryMessage;
 use App\Message\TranscribeVideoMessage;
 use App\Repository\ContentRepository;
 use App\Security\PermissionChecker;
+use App\Service\CaptionLanguages;
 use App\Service\ChunkUploadService;
 use App\Service\ThumbnailGenerator;
 use App\Service\VideoMetadataExtractor;
@@ -165,6 +166,13 @@ class ChunkUploadController extends AbstractController
             $transcription = new VideoTranscription($uploadId, $filename);
             $title = trim(urldecode((string) $request->request->get('title', '')));
 
+            $requestedLanguages = json_decode((string) $request->request->get('captionLanguages', '[]'), true);
+            $requestedLanguages = array_values(array_intersect(
+                array_filter((array) $requestedLanguages, 'is_string'),
+                CaptionLanguages::TRANSLATION_TARGETS,
+            ));
+            $transcription->setRequestedCaptionLanguages($requestedLanguages);
+
             $content = new Content(
                 filename: $filename,
                 uploadId: $uploadId,
@@ -172,6 +180,7 @@ class ChunkUploadController extends AbstractController
                 fileSize: $fileSize,
                 fileHash: $fileHash,
                 duration: $duration,
+                ownerId: $this->getUser()?->getUserIdentifier() ?? 'anonymous',
             );
             if ('' !== $title) {
                 $content->setTitle($title);
@@ -181,9 +190,10 @@ class ChunkUploadController extends AbstractController
             $this->entityManager->persist($content);
             $this->entityManager->flush();
 
-            $hasThumbnail = $this->thumbnailGenerator->generate($uploadId, $filename, $duration);
-            if ($hasThumbnail) {
+            $candidateCount = $this->thumbnailGenerator->generate($uploadId, $filename, $duration);
+            if ($candidateCount > 0) {
                 $content->setHasThumbnail(true);
+                $content->setThumbnailCandidateCount($candidateCount);
                 $this->entityManager->flush();
             }
 

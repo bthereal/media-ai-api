@@ -11,3 +11,4 @@ framework:
             App\Message\EmbedVideoSummaryMessage: async
             App\Message\GenerateChaptersMessage:  async
             App\Message\GenerateTagsMessage:      async
+            App\Message\GenerateCaptionsMessage:  async

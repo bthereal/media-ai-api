@@ -5,13 +5,16 @@ declare(strict_types=1);
 namespace App\Tests\Functional\Controller;
 
 use App\Entity\Content;
+use App\Entity\User;
 use App\Entity\VideoTranscription;
+use App\Security\TenantContext;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\AI\Platform\Vector\NullVector;
 use Symfony\AI\Store\Document\Metadata;
 use Symfony\AI\Store\Document\VectorDocument;
 use Symfony\AI\Store\RetrieverInterface;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
+use Symfony\Component\Security\Core\Authentication\Token\UsernamePasswordToken;
 
 class ContentControllerTest extends WebTestCase
 {
@@ -39,6 +42,36 @@ class ContentControllerTest extends WebTestCase
         $conn = $this->em->getConnection();
         $conn->executeStatement('TRUNCATE TABLE content, video_transcription RESTART IDENTITY CASCADE');
         $conn->executeStatement('TRUNCATE TABLE video_transcript_embeds');
+        $conn->executeStatement('TRUNCATE TABLE users RESTART IDENTITY CASCADE');
+    }
+
+    /**
+     * Simulates an authenticated request as the given identity — sets a real
+     * security token (so PermissionChecker::isAdmin()'s null-token bypass doesn't
+     * apply) plus matching TenantContext roles/permissions, mirroring how the
+     * real JWT listener chain would populate both from a validated token.
+     */
+    private function actAsUser(string $email, array $tenantRoles, array $permissions): User
+    {
+        $user = new User();
+        $user->setEmail($email);
+        $user->setFirstName('Test');
+        $user->setLastName('User');
+        $user->setPassword('irrelevant-hash');
+        $user->setTenantRoles($tenantRoles);
+        $user->setPermissions($permissions);
+        $this->em->persist($user);
+        $this->em->flush();
+
+        static::getContainer()->get('security.token_storage')->setToken(
+            new UsernamePasswordToken($user, 'api', $user->getRoles()),
+        );
+
+        $tenantContext = static::getContainer()->get(TenantContext::class);
+        $tenantContext->setRoles($tenantRoles);
+        $tenantContext->setPermissions($permissions);
+
+        return $user;
     }
 
     public function testListReturnsEmptyPage(): void
@@ -107,6 +140,46 @@ class ContentControllerTest extends WebTestCase
         $this->assertSame(1, $body['total']);
         // availableCategories always reflects the whole library, not just the filtered slice
         $this->assertSame(['Interview', 'Tutorial'], $body['availableCategories']);
+    }
+
+    public function testListFiltersByOwnerMe(): void
+    {
+        // Unauthenticated requests in the test firewall resolve to the 'anonymous' owner,
+        // mirroring the same convention already used for Playlist ownership in tests.
+        $mine = new Content(
+            filename: 'mine.mp4',
+            uploadId: '550e8400-e29b-41d4-a716-446655440000',
+            mimeType: 'video/mp4',
+            fileSize: 1024,
+            fileHash: str_repeat('a', 64),
+            ownerId: 'anonymous',
+        );
+
+        $someoneElses = new Content(
+            filename: 'someone-elses.mp4',
+            uploadId: '660e8400-e29b-41d4-a716-446655440001',
+            mimeType: 'video/mp4',
+            fileSize: 1024,
+            fileHash: str_repeat('b', 64),
+            ownerId: 'other-user@example.com',
+        );
+
+        $this->em->persist($mine);
+        $this->em->persist($someoneElses);
+        $this->em->flush();
+
+        $client = static::getClient();
+
+        // Unfiltered: both present
+        $client->request('GET', self::ENDPOINT);
+        $body = json_decode($client->getResponse()->getContent(), true);
+        $this->assertCount(2, $body['items']);
+
+        // owner=me: only the caller's own upload
+        $client->request('GET', self::ENDPOINT.'?owner=me');
+        $body = json_decode($client->getResponse()->getContent(), true);
+        $this->assertCount(1, $body['items']);
+        $this->assertSame('mine.mp4', $body['items'][0]['filename']);
     }
 
     public function testListReturnsPaginatedResults(): void
@@ -314,6 +387,117 @@ class ContentControllerTest extends WebTestCase
         unlink("{$uploadsDir}/{$uploadId}/{$filename}");
         rmdir("{$uploadsDir}/{$uploadId}");
         unlink($tmpFile);
+    }
+
+    public function testThumbnailCandidateServesJpeg(): void
+    {
+        $uploadId = '880e8400-e29b-41d4-a716-446655440003';
+        $uploadsDir = static::getContainer()->getParameter('kernel.project_dir').'/var/uploads';
+        @mkdir("{$uploadsDir}/{$uploadId}", 0777, true);
+        file_put_contents("{$uploadsDir}/{$uploadId}/thumb-candidate-0.jpg", 'fake-jpeg-bytes');
+
+        $content = new Content(
+            filename: 'video.mp4',
+            uploadId: $uploadId,
+            mimeType: 'video/mp4',
+            fileSize: 1024,
+            fileHash: str_repeat('e', 64),
+        );
+        $content->setThumbnailCandidateCount(2);
+        $this->em->persist($content);
+        $this->em->flush();
+
+        $client = static::getClient();
+        $client->request('GET', self::ENDPOINT.'/'.(string) $content->getId().'/thumbnail/candidates/0');
+
+        $this->assertSame(200, $client->getResponse()->getStatusCode());
+        $this->assertSame('fake-jpeg-bytes', $client->getResponse()->getContent());
+        $this->assertStringContainsString('image/jpeg', $client->getResponse()->headers->get('Content-Type') ?? '');
+
+        unlink("{$uploadsDir}/{$uploadId}/thumb-candidate-0.jpg");
+        rmdir("{$uploadsDir}/{$uploadId}");
+    }
+
+    public function testThumbnailCandidateReturns404ForOutOfRangeIndex(): void
+    {
+        $content = new Content(
+            filename: 'video.mp4',
+            uploadId: '880e8400-e29b-41d4-a716-446655440004',
+            mimeType: 'video/mp4',
+            fileSize: 1024,
+            fileHash: str_repeat('f', 64),
+        );
+        $content->setThumbnailCandidateCount(2);
+        $this->em->persist($content);
+        $this->em->flush();
+
+        $client = static::getClient();
+        $client->request('GET', self::ENDPOINT.'/'.(string) $content->getId().'/thumbnail/candidates/5');
+
+        $this->assertSame(404, $client->getResponse()->getStatusCode());
+    }
+
+    public function testSelectThumbnailCopiesCandidateOverThumbnailAndSetsHasThumbnail(): void
+    {
+        $uploadId = '880e8400-e29b-41d4-a716-446655440005';
+        $uploadsDir = static::getContainer()->getParameter('kernel.project_dir').'/var/uploads';
+        @mkdir("{$uploadsDir}/{$uploadId}", 0777, true);
+        file_put_contents("{$uploadsDir}/{$uploadId}/thumb-candidate-1.jpg", 'candidate-one-bytes');
+
+        $content = new Content(
+            filename: 'video.mp4',
+            uploadId: $uploadId,
+            mimeType: 'video/mp4',
+            fileSize: 1024,
+            fileHash: str_repeat('g', 64),
+        );
+        $content->setThumbnailCandidateCount(2);
+        $this->em->persist($content);
+        $this->em->flush();
+
+        $client = static::getClient();
+        $client->request('POST', self::ENDPOINT.'/'.(string) $content->getId().'/thumbnail/select', content: json_encode(['index' => 1]));
+
+        $this->assertSame(200, $client->getResponse()->getStatusCode());
+        $body = json_decode($client->getResponse()->getContent(), true);
+        $this->assertTrue($body['hasThumbnail']);
+
+        $client->request('GET', self::ENDPOINT.'/'.(string) $content->getId().'/thumbnail');
+        $this->assertSame('candidate-one-bytes', $client->getResponse()->getContent());
+
+        unlink("{$uploadsDir}/{$uploadId}/thumb-candidate-1.jpg");
+        unlink("{$uploadsDir}/{$uploadId}/thumbnail.jpg");
+        rmdir("{$uploadsDir}/{$uploadId}");
+    }
+
+    public function testSelectThumbnailRejectsOutOfRangeIndex(): void
+    {
+        $content = new Content(
+            filename: 'video.mp4',
+            uploadId: '880e8400-e29b-41d4-a716-446655440006',
+            mimeType: 'video/mp4',
+            fileSize: 1024,
+            fileHash: str_repeat('h', 64),
+        );
+        $content->setThumbnailCandidateCount(2);
+        $this->em->persist($content);
+        $this->em->flush();
+
+        $client = static::getClient();
+        $client->request('POST', self::ENDPOINT.'/'.(string) $content->getId().'/thumbnail/select', content: json_encode(['index' => 9]));
+
+        $this->assertSame(422, $client->getResponse()->getStatusCode());
+    }
+
+    public function testCaptionLanguagesReturnsCuratedList(): void
+    {
+        $client = static::getClient();
+        $client->request('GET', '/api/caption-languages');
+
+        $this->assertSame(200, $client->getResponse()->getStatusCode());
+        $body = json_decode($client->getResponse()->getContent(), true);
+        $this->assertSame(['es', 'fr', 'de', 'ja', 'zh'], array_column($body, 'code'));
+        $this->assertSame('Spanish', $body[0]['label']);
     }
 
     public function testCaptionsReturns404ForUnknownContent(): void
@@ -556,6 +740,73 @@ class ContentControllerTest extends WebTestCase
 
         $countAfter = (int) $this->em->getConnection()->fetchOne('SELECT COUNT(*) FROM video_transcript_embeds WHERE id = :id', ['id' => $contentId]);
         $this->assertSame(0, $countAfter);
+    }
+
+    public function testDeleteAllowsEditorToDeleteOwnContent(): void
+    {
+        $content = new Content(
+            filename: 'mine.mp4',
+            uploadId: '550e8400-e29b-41d4-a716-446655440000',
+            mimeType: 'video/mp4',
+            fileSize: 1024,
+            fileHash: str_repeat('a', 64),
+            ownerId: 'editor@example.com',
+        );
+        $this->em->persist($content);
+        $this->em->flush();
+
+        $this->actAsUser('editor@example.com', ['CONTENT_ADMIN'], ['content:update']);
+
+        $client = static::getClient();
+        $client->request('DELETE', self::ENDPOINT.'/'.$content->getId());
+
+        $this->assertSame(200, $client->getResponse()->getStatusCode());
+    }
+
+    public function testDeleteRejectsEditorDeletingSomeoneElsesContent(): void
+    {
+        $content = new Content(
+            filename: 'not-mine.mp4',
+            uploadId: '660e8400-e29b-41d4-a716-446655440001',
+            mimeType: 'video/mp4',
+            fileSize: 1024,
+            fileHash: str_repeat('b', 64),
+            ownerId: 'someone-else@example.com',
+        );
+        $this->em->persist($content);
+        $this->em->flush();
+
+        $this->actAsUser('editor@example.com', ['CONTENT_ADMIN'], ['content:update']);
+
+        $client = static::getClient();
+        $client->request('DELETE', self::ENDPOINT.'/'.$content->getId());
+
+        $this->assertSame(403, $client->getResponse()->getStatusCode());
+
+        $this->em->clear();
+        $stillActive = $this->em->getRepository(Content::class)->find($content->getId());
+        $this->assertNull($stillActive->getDeletedAt());
+    }
+
+    public function testDeleteAllowsAdminToDeleteAnyEditorsContent(): void
+    {
+        $content = new Content(
+            filename: 'editor-owned.mp4',
+            uploadId: '770e8400-e29b-41d4-a716-446655440002',
+            mimeType: 'video/mp4',
+            fileSize: 1024,
+            fileHash: str_repeat('c', 64),
+            ownerId: 'editor@example.com',
+        );
+        $this->em->persist($content);
+        $this->em->flush();
+
+        $this->actAsUser('admin@example.com', ['ROLE_GROUP_ADMIN'], []);
+
+        $client = static::getClient();
+        $client->request('DELETE', self::ENDPOINT.'/'.$content->getId());
+
+        $this->assertSame(200, $client->getResponse()->getStatusCode());
     }
 
     private function insertFakeEmbedding(string $contentId): void

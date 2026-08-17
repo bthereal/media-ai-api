@@ -46,6 +46,18 @@ class PermissionChecker
             || in_array($permission, $this->tenantContext->getPermissions(), true);
     }
 
+    /**
+     * Returns true if the current JWT carries ROLE_GROUP_ADMIN, or if there is no
+     * security token at all (e.g. test env) — the same bypass convention used by
+     * hasPermission()/hasRoleAndPermission(). Used where a caller needs to know
+     * specifically whether the requester is an admin (e.g. bypassing per-owner
+     * restrictions), not just whether a given permission is present.
+     */
+    public function isAdmin(): bool
+    {
+        return $this->tokenStorage->getToken() === null || $this->isGroupAdmin();
+    }
+
     private function isGroupAdmin(): bool
     {
         return in_array('ROLE_GROUP_ADMIN', $this->tenantContext->getRoles(), true);

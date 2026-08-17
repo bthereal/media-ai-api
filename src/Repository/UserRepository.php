@@ -33,6 +33,6 @@ class UserRepository extends ServiceEntityRepository implements PasswordUpgrader
 
     public function findActiveByEmail(string $email): ?User
     {
-        return $this->findOneBy(['email' => $email, 'active' => true]);
+        return $this->findOneBy(['email' => $email, 'deactivatedAt' => null]);
     }
 }

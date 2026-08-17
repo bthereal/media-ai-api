@@ -39,8 +39,8 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     #[ORM\Column(type: 'json')]
     private array $permissions = [];
 
-    #[ORM\Column]
-    private bool $active = true;
+    #[ORM\Column(nullable: true)]
+    private ?\DateTimeImmutable $deactivatedAt = null;
 
     #[ORM\Column]
     private \DateTimeImmutable $createdAt;
@@ -157,14 +157,22 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
 
     public function isActive(): bool
     {
-        return $this->active;
+        return null === $this->deactivatedAt;
     }
 
-    public function setActive(bool $active): static
+    public function getDeactivatedAt(): ?\DateTimeImmutable
     {
-        $this->active = $active;
+        return $this->deactivatedAt;
+    }
 
-        return $this;
+    public function deactivate(): void
+    {
+        $this->deactivatedAt = new \DateTimeImmutable();
+    }
+
+    public function reactivate(): void
+    {
+        $this->deactivatedAt = null;
     }
 
     public function getCreatedAt(): \DateTimeImmutable

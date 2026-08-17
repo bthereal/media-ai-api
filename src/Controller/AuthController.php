@@ -4,8 +4,11 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Dto\UserDto;
+use App\Dto\UserListDto;
 use App\Entity\User;
 use App\Repository\UserRepository;
+use App\Security\RoleCatalog;
 use App\Security\TenantContext;
 use Doctrine\ORM\EntityManagerInterface;
 use Lexik\Bundle\JWTAuthenticationBundle\Services\JWTTokenManagerInterface;
@@ -82,7 +85,7 @@ class AuthController extends AbstractController
 
     /**
      * POST /api/auth/register — requires ROLE_GROUP_ADMIN
-     * Body: { "email": "...", "password": "...", "firstName": "...", "lastName": "...", "roles": [...], "permissions": [...] }
+     * Body: { "email": "...", "password": "...", "firstName": "...", "lastName": "...", "role": "admin"|"editor" }
      */
     #[Route('/register', name: 'api_auth_register', methods: ['POST'])]
     public function register(Request $request): JsonResponse
@@ -99,8 +102,7 @@ class AuthController extends AbstractController
         $password = (string) ($data['password'] ?? '');
         $firstName = trim((string) ($data['firstName'] ?? ''));
         $lastName = trim((string) ($data['lastName'] ?? ''));
-        $roles = array_values(array_filter((array) ($data['roles'] ?? []), 'is_string'));
-        $permissions = array_values(array_filter((array) ($data['permissions'] ?? []), 'is_string'));
+        $role = (string) ($data['role'] ?? '');
 
         $errors = [];
         if ($email === '' || !filter_var($email, \FILTER_VALIDATE_EMAIL)) {
@@ -114,6 +116,9 @@ class AuthController extends AbstractController
         }
         if ($lastName === '') {
             $errors['lastName'] = 'Last name is required.';
+        }
+        if (!RoleCatalog::isValid($role)) {
+            $errors['role'] = 'A valid role is required.';
         }
         if ($errors !== []) {
             return $this->json(
@@ -129,13 +134,15 @@ class AuthController extends AbstractController
             );
         }
 
+        $resolved = RoleCatalog::resolve($role);
+
         $user = new User();
         $user->setEmail($email);
         $user->setFirstName($firstName);
         $user->setLastName($lastName);
         $user->setPassword($this->passwordHasher->hashPassword($user, $password));
-        $user->setTenantRoles($roles ?: ['CONTENT_ADMIN']);
-        $user->setPermissions($permissions ?: ['content:create', 'content:read', 'content:update']);
+        $user->setTenantRoles($resolved['roles']);
+        $user->setPermissions($resolved['permissions']);
 
         $this->entityManager->persist($user);
         $this->entityManager->flush();
@@ -148,5 +155,105 @@ class AuthController extends AbstractController
             'roles' => $user->getTenantRoles(),
             'permissions' => $user->getPermissions(),
         ], Response::HTTP_CREATED);
+    }
+
+    /**
+     * GET /api/auth/users — requires ROLE_GROUP_ADMIN
+     */
+    #[Route('/users', name: 'api_auth_users', methods: ['GET'])]
+    public function users(): JsonResponse
+    {
+        if (!in_array('ROLE_GROUP_ADMIN', $this->tenantContext->getRoles(), true)) {
+            return $this->json(
+                ['error' => 'forbidden', 'message' => 'Only admins can view users.'],
+                Response::HTTP_FORBIDDEN,
+            );
+        }
+
+        $users = $this->userRepository->findBy([], ['createdAt' => 'DESC']);
+
+        return $this->json(new UserListDto(
+            ok: true,
+            items: array_map(UserDto::fromEntity(...), $users),
+        ));
+    }
+
+    /**
+     * GET /api/auth/users/{id} — requires ROLE_GROUP_ADMIN
+     */
+    #[Route('/users/{id}', name: 'api_auth_user_get', methods: ['GET'])]
+    public function userGet(string $id): JsonResponse
+    {
+        if (!in_array('ROLE_GROUP_ADMIN', $this->tenantContext->getRoles(), true)) {
+            return $this->json(
+                ['error' => 'forbidden', 'message' => 'Only admins can view users.'],
+                Response::HTTP_FORBIDDEN,
+            );
+        }
+
+        $user = $this->userRepository->find($id);
+
+        if (null === $user) {
+            return $this->json(['error' => 'not_found', 'message' => 'User not found.'], Response::HTTP_NOT_FOUND);
+        }
+
+        return $this->json(UserDto::fromEntity($user));
+    }
+
+    /**
+     * POST /api/auth/users/{id}/deactivate — requires ROLE_GROUP_ADMIN
+     */
+    #[Route('/users/{id}/deactivate', name: 'api_auth_user_deactivate', methods: ['POST'])]
+    public function userDeactivate(string $id): JsonResponse
+    {
+        if (!in_array('ROLE_GROUP_ADMIN', $this->tenantContext->getRoles(), true)) {
+            return $this->json(
+                ['error' => 'forbidden', 'message' => 'Only admins can deactivate users.'],
+                Response::HTTP_FORBIDDEN,
+            );
+        }
+
+        $user = $this->userRepository->find($id);
+
+        if (null === $user) {
+            return $this->json(['error' => 'not_found', 'message' => 'User not found.'], Response::HTTP_NOT_FOUND);
+        }
+
+        if ((string) $user->getId() === (string) $this->getUser()?->getId()) {
+            return $this->json(
+                ['error' => 'cannot_deactivate_self', 'message' => 'You cannot deactivate your own account.'],
+                Response::HTTP_UNPROCESSABLE_ENTITY,
+            );
+        }
+
+        $user->deactivate();
+        $this->entityManager->flush();
+
+        return $this->json(UserDto::fromEntity($user));
+    }
+
+    /**
+     * POST /api/auth/users/{id}/reactivate — requires ROLE_GROUP_ADMIN
+     */
+    #[Route('/users/{id}/reactivate', name: 'api_auth_user_reactivate', methods: ['POST'])]
+    public function userReactivate(string $id): JsonResponse
+    {
+        if (!in_array('ROLE_GROUP_ADMIN', $this->tenantContext->getRoles(), true)) {
+            return $this->json(
+                ['error' => 'forbidden', 'message' => 'Only admins can reactivate users.'],
+                Response::HTTP_FORBIDDEN,
+            );
+        }
+
+        $user = $this->userRepository->find($id);
+
+        if (null === $user) {
+            return $this->json(['error' => 'not_found', 'message' => 'User not found.'], Response::HTTP_NOT_FOUND);
+        }
+
+        $user->reactivate();
+        $this->entityManager->flush();
+
+        return $this->json(UserDto::fromEntity($user));
     }
 }

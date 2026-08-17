@@ -82,6 +82,16 @@ class VideoTranscription
     #[ORM\Column(type: Types::STRING, length: 100, nullable: true)]
     private ?string $category = null;
 
+    /**
+     * Caption languages the uploader asked to have generated eagerly (in addition
+     * to whatever a viewer might request lazily later) — null/empty means none
+     * were requested at upload time.
+     *
+     * @var list<string>|null
+     */
+    #[ORM\Column(type: Types::JSON, nullable: true)]
+    private ?array $requestedCaptionLanguages = null;
+
     #[ORM\Column(type: Types::DATETIME_IMMUTABLE)]
     private \DateTimeImmutable $createdAt;
 
@@ -229,6 +239,22 @@ class VideoTranscription
     public function getCategory(): ?string
     {
         return $this->category;
+    }
+
+    /**
+     * @return list<string>
+     */
+    public function getRequestedCaptionLanguages(): array
+    {
+        return $this->requestedCaptionLanguages ?? [];
+    }
+
+    /**
+     * @param list<string> $languages
+     */
+    public function setRequestedCaptionLanguages(array $languages): void
+    {
+        $this->requestedCaptionLanguages = $languages;
     }
 
     public function markFailed(string $errorMessage): void

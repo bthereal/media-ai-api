@@ -22,18 +22,18 @@ class ThumbnailGenerator
     }
 
     /**
-     * Reads the video from Flysystem, extracts several candidate frames, uses a
-     * vision model to pick the most visually representative one (falling back to
-     * the earliest candidate if the AI call fails), and writes the winner back to
-     * Flysystem as thumbnail.jpg under the same uploadId prefix.
-     * Returns true on success, false on any failure (non-fatal).
+     * Reads the video from Flysystem, extracts several candidate frames, persists
+     * ALL of them to Flysystem (so a user can later pick a different one), uses a
+     * vision model to auto-pick the most visually representative one (falling back
+     * to the earliest candidate if the AI call fails) as the default thumbnail.jpg.
+     * Returns the number of candidates persisted (0 means generation failed entirely).
      */
-    public function generate(string $uploadId, string $filename, ?float $duration = null): bool
+    public function generate(string $uploadId, string $filename, ?float $duration = null): int
     {
         try {
             $videoContent = $this->filesystem->read("{$uploadId}/{$filename}");
         } catch (\Throwable) {
-            return false;
+            return 0;
         }
 
         $tmpVideo = tempnam(sys_get_temp_dir(), 'thumb_v_').'.mp4';
@@ -52,7 +52,14 @@ class ThumbnailGenerator
             }
 
             if ([] === $candidates) {
-                return false;
+                return 0;
+            }
+
+            foreach ($candidates as $index => $candidate) {
+                $this->filesystem->write(
+                    self::candidatePath($uploadId, $index),
+                    file_get_contents($candidate),
+                );
             }
 
             $bestPath = $this->pickBest($candidates);
@@ -62,9 +69,9 @@ class ThumbnailGenerator
                 file_get_contents($bestPath),
             );
 
-            return true;
+            return count($candidates);
         } catch (\Throwable) {
-            return false;
+            return 0;
         } finally {
             unlink($tmpVideo);
             foreach ($candidates as $candidate) {
@@ -78,6 +85,11 @@ class ThumbnailGenerator
     public static function thumbnailPath(string $uploadId): string
     {
         return "{$uploadId}/".self::THUMBNAIL_PATH;
+    }
+
+    public static function candidatePath(string $uploadId, int $index): string
+    {
+        return "{$uploadId}/thumb-candidate-{$index}.jpg";
     }
 
     /**

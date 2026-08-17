@@ -23,6 +23,9 @@ final readonly class ContentDto
         #[OA\Property(type: 'string', nullable: true, description: 'User-defined title; null until set')]
         public ?string $title,
 
+        #[OA\Property(type: 'string', nullable: true, description: 'Identifier (email) of the uploader; null for content uploaded before ownership tracking existed')]
+        public ?string $ownerId,
+
         #[OA\Property(type: 'string', example: 'video.mp4')]
         public string $filename,
 
@@ -41,6 +44,9 @@ final readonly class ContentDto
         #[OA\Property(type: 'boolean', description: 'Whether a JPEG thumbnail has been generated')]
         public bool $hasThumbnail,
 
+        #[OA\Property(type: 'integer', description: 'Number of candidate thumbnail frames available to choose from via /thumbnail/candidates/{index}')]
+        public int $thumbnailCandidateCount,
+
         #[OA\Property(type: 'string', format: 'date-time')]
         public string $createdAt,
 
@@ -58,12 +64,14 @@ final readonly class ContentDto
             ok: true,
             id: (string) $content->getId(),
             title: $content->getTitle(),
+            ownerId: $content->getOwnerId(),
             filename: $content->getFilename(),
             uploadId: $content->getUploadId(),
             mimeType: $content->getMimeType(),
             fileSize: $content->getFileSize(),
             duration: $content->getDuration(),
             hasThumbnail: $content->hasThumbnail(),
+            thumbnailCandidateCount: $content->getThumbnailCandidateCount(),
             createdAt: $content->getCreatedAt()->format(\DateTimeInterface::ATOM),
             deletedAt: $content->getDeletedAt()?->format(\DateTimeInterface::ATOM),
             transcription: null !== $content->getTranscription()

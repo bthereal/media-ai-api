@@ -6,6 +6,7 @@ namespace App\Controller;
 
 use App\Dto\ContentDto;
 use App\Dto\ContentListDto;
+use App\Dto\LanguageOptionDto;
 use App\Dto\ProgressDto;
 use App\Dto\RelatedVideosDto;
 use App\Dto\VideoAnalyticsDto;
@@ -50,6 +51,34 @@ class ContentController extends AbstractController
     ) {
     }
 
+    #[Route('/api/caption-languages', name: 'api_caption_languages', methods: ['GET'])]
+    #[OA\Get(
+        path: '/api/caption-languages',
+        operationId: 'listCaptionLanguages',
+        summary: 'The curated set of languages offerable for caption generation, e.g. at upload time',
+        tags: ['Content'],
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: 'Available caption languages',
+                content: new OA\JsonContent(type: 'array', items: new OA\Items(ref: new Model(type: LanguageOptionDto::class))),
+            ),
+        ],
+    )]
+    public function captionLanguages(): JsonResponse
+    {
+        if (!$this->permissionChecker->hasPermission('content:read')) {
+            return $this->json(['ok' => false, 'error' => 'Forbidden. Requires content:read permission.'], Response::HTTP_FORBIDDEN);
+        }
+
+        $languages = array_map(
+            static fn (string $code) => new LanguageOptionDto($code, CaptionLanguages::labelFor($code)),
+            CaptionLanguages::TRANSLATION_TARGETS,
+        );
+
+        return $this->json($languages);
+    }
+
     #[Route('/api/content', name: 'api_content_list', methods: ['GET'])]
     #[OA\Get(
         path: '/api/content',
@@ -59,6 +88,7 @@ class ContentController extends AbstractController
         parameters: [
             new OA\Parameter(name: 'page', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 1)),
             new OA\Parameter(name: 'category', in: 'query', required: false, description: 'Filter to videos with this exact AI-assigned category', schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'owner', in: 'query', required: false, description: 'Pass "me" to filter to only the authenticated user\'s own uploads', schema: new OA\Schema(type: 'string')),
         ],
         responses: [
             new OA\Response(
@@ -79,7 +109,9 @@ class ContentController extends AbstractController
         $category = $request->query->get('category');
         $category = null !== $category && '' !== $category ? (string) $category : null;
 
-        ['items' => $items, 'total' => $total] = $this->contentRepository->findPaginated($page, $perPage, $category);
+        $ownerId = 'me' === $request->query->get('owner') ? ($this->getUser()?->getUserIdentifier() ?? 'anonymous') : null;
+
+        ['items' => $items, 'total' => $total] = $this->contentRepository->findPaginated($page, $perPage, $category, $ownerId);
 
         $totalPages = max(1, (int) ceil($total / $perPage));
 
@@ -165,6 +197,14 @@ class ContentController extends AbstractController
 
         if (null === $content || null !== $content->getDeletedAt()) {
             return $this->json(['ok' => false, 'error' => 'Content not found.'], Response::HTTP_NOT_FOUND);
+        }
+
+        // Editors may only delete their own uploads; admins can delete anything.
+        if (!$this->permissionChecker->isAdmin()) {
+            $viewerId = $this->getUser()?->getUserIdentifier() ?? 'anonymous';
+            if ($content->getOwnerId() !== $viewerId) {
+                return $this->json(['ok' => false, 'error' => 'Forbidden. You can only delete your own videos.'], Response::HTTP_FORBIDDEN);
+            }
         }
 
         $content->archive();
@@ -383,11 +423,102 @@ class ContentController extends AbstractController
             return $this->json(['ok' => false, 'error' => 'Content not found.'], Response::HTTP_NOT_FOUND);
         }
 
-        $ok = $this->thumbnailGenerator->generate($content->getUploadId(), $content->getFilename(), $content->getDuration());
+        $candidateCount = $this->thumbnailGenerator->generate($content->getUploadId(), $content->getFilename(), $content->getDuration());
 
-        if (!$ok) {
+        if (0 === $candidateCount) {
             return $this->json(['ok' => false, 'error' => 'Thumbnail generation failed.'], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
+
+        $content->setHasThumbnail(true);
+        $content->setThumbnailCandidateCount($candidateCount);
+        $this->entityManager->flush();
+
+        return $this->json(ContentDto::fromEntity($content));
+    }
+
+    #[Route('/api/content/{id}/thumbnail/candidates/{index}', name: 'api_content_thumbnail_candidate', methods: ['GET'], requirements: ['index' => '\d+'])]
+    #[OA\Get(
+        path: '/api/content/{id}/thumbnail/candidates/{index}',
+        operationId: 'getContentThumbnailCandidate',
+        summary: 'Serve a candidate thumbnail frame — publicly accessible, no auth required',
+        tags: ['Content'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string', format: 'uuid')),
+            new OA\Parameter(name: 'index', in: 'path', required: true, schema: new OA\Schema(type: 'integer')),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'JPEG candidate frame'),
+            new OA\Response(response: 404, description: 'Content not found or candidate index out of range'),
+        ],
+    )]
+    public function thumbnailCandidate(string $id, int $index): Response
+    {
+        if (!$this->permissionChecker->hasPermission('content:read')) {
+            return $this->json(['ok' => false, 'error' => 'Forbidden. Requires content:read permission.'], Response::HTTP_FORBIDDEN);
+        }
+
+        $content = $this->contentRepository->find($id);
+
+        if (null === $content || $index < 0 || $index >= $content->getThumbnailCandidateCount()) {
+            return new Response(null, Response::HTTP_NOT_FOUND);
+        }
+
+        try {
+            $jpeg = $this->filesystem->read(ThumbnailGenerator::candidatePath($content->getUploadId(), $index));
+        } catch (\Throwable) {
+            return new Response(null, Response::HTTP_NOT_FOUND);
+        }
+
+        return new Response($jpeg, Response::HTTP_OK, [
+            'Content-Type' => 'image/jpeg',
+            'Cache-Control' => 'public, max-age=86400, immutable',
+        ]);
+    }
+
+    #[Route('/api/content/{id}/thumbnail/select', name: 'api_content_thumbnail_select', methods: ['POST'])]
+    #[OA\Post(
+        path: '/api/content/{id}/thumbnail/select',
+        operationId: 'selectContentThumbnail',
+        summary: 'Pick one of the generated candidate frames as the thumbnail, overriding the AI auto-pick',
+        tags: ['Content'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string', format: 'uuid')),
+        ],
+        requestBody: new OA\RequestBody(
+            required: true,
+            content: new OA\JsonContent(required: ['index'], properties: [
+                new OA\Property(property: 'index', type: 'integer'),
+            ]),
+        ),
+        responses: [
+            new OA\Response(response: 200, description: 'Thumbnail updated', content: new OA\JsonContent(ref: new Model(type: ContentDto::class))),
+            new OA\Response(response: 404, description: 'Content not found'),
+            new OA\Response(response: 422, description: 'Index out of range'),
+        ],
+    )]
+    public function selectThumbnail(string $id, Request $request): JsonResponse
+    {
+        if (!$this->permissionChecker->hasPermission('content:update')) {
+            return $this->json(['ok' => false, 'error' => 'Forbidden. Requires content:update permission.'], Response::HTTP_FORBIDDEN);
+        }
+
+        $content = $this->contentRepository->find($id);
+
+        if (null === $content || null !== $content->getDeletedAt()) {
+            return $this->json(['ok' => false, 'error' => 'Content not found.'], Response::HTTP_NOT_FOUND);
+        }
+
+        $data = json_decode($request->getContent(), true) ?? [];
+        $index = (int) ($data['index'] ?? -1);
+
+        if ($index < 0 || $index >= $content->getThumbnailCandidateCount()) {
+            return $this->json(['ok' => false, 'error' => 'Invalid candidate index.'], Response::HTTP_UNPROCESSABLE_ENTITY);
+        }
+
+        $this->filesystem->write(
+            ThumbnailGenerator::thumbnailPath($content->getUploadId()),
+            $this->filesystem->read(ThumbnailGenerator::candidatePath($content->getUploadId(), $index)),
+        );
 
         $content->setHasThumbnail(true);
         $this->entityManager->flush();
