@@ -18,6 +18,7 @@ class TenantContext implements ResetInterface
     /** @var list<string> */
     private array $permissions = [];
 
+    #[\Override]
     public function reset(): void
     {
         $this->roles = [];

@@ -54,11 +54,18 @@ class SearchController extends AbstractController
         foreach ($matched as $doc) {
             $id = (string) $doc->getId();
             $content = $this->contentRepository->find($id);
+
+            // Defense in depth: archived content's embeddings are removed when it's
+            // deleted, but skip defensively in case a stale entry ever slips through.
+            if (null === $content || null !== $content->getDeletedAt()) {
+                continue;
+            }
+
             $metadata = $doc->getMetadata();
 
             $videos[] = [
                 'id' => $id,
-                'title' => $content?->getTitle() ?? $content?->getFilename() ?? null,
+                'title' => $content->getTitle() ?? $content->getFilename(),
                 'summary' => $metadata->hasText() ? $metadata->getText() : null,
             ];
         }
@@ -72,7 +79,7 @@ class SearchController extends AbstractController
         return $this->json([
             'ok' => true,
             'answer' => $result->getContent(),
-            'videos' => array_values($videos),
+            'videos' => $videos,
         ]);
     }
 }

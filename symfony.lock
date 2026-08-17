@@ -95,6 +95,9 @@
             "bin/phpunit"
         ]
     },
+    "squizlabs/php_codesniffer": {
+        "version": "4.0.4"
+    },
     "symfony/ai-bundle": {
         "version": "0.8",
         "recipe": {

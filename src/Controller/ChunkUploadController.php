@@ -8,9 +8,11 @@ use App\Entity\Content;
 use App\Entity\VideoTranscription;
 use App\Exception\StorageException;
 use App\Exception\ValidationException;
+use App\Message\EmbedVideoSummaryMessage;
 use App\Message\TranscribeVideoMessage;
 use App\Repository\ContentRepository;
 use App\Security\PermissionChecker;
+use App\Service\CaptionLanguages;
 use App\Service\ChunkUploadService;
 use App\Service\ThumbnailGenerator;
 use App\Service\VideoMetadataExtractor;
@@ -135,11 +137,41 @@ class ChunkUploadController extends AbstractController
                 ]);
             }
 
+            // Reactivate a previously-deleted upload of the same file rather than
+            // creating a duplicate Content row (and a duplicate search embedding) —
+            // its transcription/chapters/tags are still valid since the file is
+            // byte-identical, only the search embedding (removed on archive) needs restoring.
+            $archived = $this->contentRepository->findArchivedByHash($fileHash);
+            if (null !== $archived) {
+                $archived->unarchive();
+                $this->entityManager->flush();
+
+                $archivedTranscription = $archived->getTranscription();
+                if (null !== $archivedTranscription && 'completed' === $archivedTranscription->getStatus() && null !== $archivedTranscription->getTranscription()) {
+                    $this->messageBus->dispatch(new EmbedVideoSummaryMessage((string) $archived->getId()));
+                }
+
+                return $this->json([
+                    'ok' => true,
+                    'uploadId' => $uploadId,
+                    'chunkIndex' => $chunkIndex,
+                    'contentId' => (string) $archived->getId(),
+                    'duplicate' => true,
+                ]);
+            }
+
             $fileSize = $this->filesystem->fileSize("{$uploadId}/{$filename}");
             $duration = $this->extractDuration($uploadId, $filename);
 
             $transcription = new VideoTranscription($uploadId, $filename);
             $title = trim(urldecode((string) $request->request->get('title', '')));
+
+            $requestedLanguages = json_decode((string) $request->request->get('captionLanguages', '[]'), true);
+            $requestedLanguages = array_values(array_intersect(
+                array_filter((array) $requestedLanguages, 'is_string'),
+                CaptionLanguages::TRANSLATION_TARGETS,
+            ));
+            $transcription->setRequestedCaptionLanguages($requestedLanguages);
 
             $content = new Content(
                 filename: $filename,
@@ -148,6 +180,7 @@ class ChunkUploadController extends AbstractController
                 fileSize: $fileSize,
                 fileHash: $fileHash,
                 duration: $duration,
+                ownerId: $this->getUser()?->getUserIdentifier() ?? 'anonymous',
             );
             if ('' !== $title) {
                 $content->setTitle($title);
@@ -157,9 +190,10 @@ class ChunkUploadController extends AbstractController
             $this->entityManager->persist($content);
             $this->entityManager->flush();
 
-            $hasThumbnail = $this->thumbnailGenerator->generate($uploadId, $filename);
-            if ($hasThumbnail) {
+            $candidateCount = $this->thumbnailGenerator->generate($uploadId, $filename, $duration);
+            if ($candidateCount > 0) {
                 $content->setHasThumbnail(true);
+                $content->setThumbnailCandidateCount($candidateCount);
                 $this->entityManager->flush();
             }
 

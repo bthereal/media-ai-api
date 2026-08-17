@@ -73,5 +73,62 @@ class ContentDtoTest extends TestCase
         $this->assertSame('pending', $dto->status);
         $this->assertNull($dto->text);
         $this->assertNull($dto->completedAt);
+        $this->assertNull($dto->chapters);
+        $this->assertNull($dto->captions);
+    }
+
+    public function testTranscriptionDtoMapsCaptionsWhenLanguageKnown(): void
+    {
+        $transcription = new VideoTranscription(self::UPLOAD_ID, 'video.mp4');
+        $transcription->markCompleted('Hello world.', [['start' => 0.0, 'end' => 5.0, 'text' => 'Hello world.']], 'english');
+
+        $dto = TranscriptionDto::fromEntity($transcription);
+
+        $this->assertNotNull($dto->captions);
+        $this->assertSame('en', $dto->captions->nativeLanguage->code);
+        $this->assertSame('English', $dto->captions->nativeLanguage->label);
+        $this->assertNotEmpty($dto->captions->availableTranslations);
+        // The native language must never also be offered as a translation target
+        foreach ($dto->captions->availableTranslations as $option) {
+            $this->assertNotSame('en', $option->code);
+        }
+    }
+
+    public function testTranscriptionDtoMapsChaptersWhenGenerated(): void
+    {
+        $transcription = new VideoTranscription(self::UPLOAD_ID, 'video.mp4');
+        $transcription->markCompleted('Hello world.', [['start' => 0.0, 'end' => 10.0, 'text' => 'Hello world.']]);
+        $transcription->setChapters([['title' => 'Intro', 'startSeconds' => 0.0, 'endSeconds' => 10.0]]);
+
+        $dto = TranscriptionDto::fromEntity($transcription);
+
+        $this->assertNotNull($dto->chapters);
+        $this->assertCount(1, $dto->chapters);
+        $this->assertSame('Intro', $dto->chapters[0]->title);
+        $this->assertSame(0.0, $dto->chapters[0]->startSeconds);
+        $this->assertSame(10.0, $dto->chapters[0]->endSeconds);
+    }
+
+    public function testTranscriptionDtoMapsTagsAndCategoryWhenGenerated(): void
+    {
+        $transcription = new VideoTranscription(self::UPLOAD_ID, 'video.mp4');
+        $transcription->markCompleted('Hello world.');
+        $transcription->setTagsAndCategory(['ai', 'video'], 'Tutorial');
+
+        $dto = TranscriptionDto::fromEntity($transcription);
+
+        $this->assertSame(['ai', 'video'], $dto->tags);
+        $this->assertSame('Tutorial', $dto->category);
+    }
+
+    public function testTranscriptionDtoTagsAndCategoryAreNullBeforeTagged(): void
+    {
+        $transcription = new VideoTranscription(self::UPLOAD_ID, 'video.mp4');
+        $transcription->markCompleted('Hello world.');
+
+        $dto = TranscriptionDto::fromEntity($transcription);
+
+        $this->assertNull($dto->tags);
+        $this->assertNull($dto->category);
     }
 }

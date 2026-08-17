@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Repository;
 
 use App\Entity\Content;
+use App\Entity\VideoTranscription;
 use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
 use Doctrine\Persistence\ManagerRegistry;
 
@@ -23,6 +24,23 @@ class ContentRepository extends ServiceEntityRepository
         return $this->findOneBy(['fileHash' => $fileHash, 'deletedAt' => null]);
     }
 
+    /**
+     * Finds an archived Content matching this hash, most-recently-deleted first —
+     * the partial unique index on file_hash only covers active rows, so more than
+     * one archived row can share a hash (repeated delete/re-upload cycles).
+     */
+    public function findArchivedByHash(string $fileHash): ?Content
+    {
+        return $this->createQueryBuilder('c')
+            ->where('c.fileHash = :hash')
+            ->andWhere('c.deletedAt IS NOT NULL')
+            ->setParameter('hash', $fileHash)
+            ->orderBy('c.deletedAt', 'DESC')
+            ->setMaxResults(1)
+            ->getQuery()
+            ->getOneOrNullResult();
+    }
+
     /** @return Content[] */
     public function findWithoutThumbnail(): array
     {
@@ -31,25 +49,50 @@ class ContentRepository extends ServiceEntityRepository
 
     /**
      * In the future this would use a Doctrine based Paginator class to be more efficient
-     * 
+     *
      * @return array{items: array<Content>, total: int}
      */
-    public function findPaginated(int $page, int $perPage): array
+    public function findPaginated(int $page, int $perPage, ?string $category = null, ?string $ownerId = null): array
     {
-        $total = (int) $this->createQueryBuilder('c')
+        $countQb = $this->createQueryBuilder('c')
             ->select('COUNT(c.id)')
-            ->where('c.deletedAt IS NULL')
-            ->getQuery()
-            ->getSingleScalarResult();
+            ->where('c.deletedAt IS NULL');
 
-        $items = $this->createQueryBuilder('c')
+        $itemsQb = $this->createQueryBuilder('c')
             ->where('c.deletedAt IS NULL')
             ->orderBy('c.createdAt', 'DESC')
             ->setFirstResult(($page - 1) * $perPage)
-            ->setMaxResults($perPage)
-            ->getQuery()
-            ->getResult();
+            ->setMaxResults($perPage);
+
+        if (null !== $category) {
+            $countQb->join('c.transcription', 't')->andWhere('t.category = :category')->setParameter('category', $category);
+            $itemsQb->join('c.transcription', 't')->andWhere('t.category = :category')->setParameter('category', $category);
+        }
+
+        if (null !== $ownerId) {
+            $countQb->andWhere('c.ownerId = :ownerId')->setParameter('ownerId', $ownerId);
+            $itemsQb->andWhere('c.ownerId = :ownerId')->setParameter('ownerId', $ownerId);
+        }
+
+        $total = (int) $countQb->getQuery()->getSingleScalarResult();
+        $items = $itemsQb->getQuery()->getResult();
 
         return ['items' => $items, 'total' => $total];
+    }
+
+    /**
+     * @return list<string>
+     */
+    public function findDistinctCategories(): array
+    {
+        $rows = $this->getEntityManager()->createQueryBuilder()
+            ->select('DISTINCT t.category AS category')
+            ->from(VideoTranscription::class, 't')
+            ->where('t.category IS NOT NULL')
+            ->orderBy('t.category', 'ASC')
+            ->getQuery()
+            ->getScalarResult();
+
+        return array_column($rows, 'category');
     }
 }

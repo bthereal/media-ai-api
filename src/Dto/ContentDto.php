@@ -16,37 +16,30 @@ final readonly class ContentDto
     public function __construct(
         #[OA\Property(type: 'boolean', example: true)]
         public bool $ok,
-
         #[OA\Property(type: 'string', format: 'uuid')]
         public string $id,
-
         #[OA\Property(type: 'string', nullable: true, description: 'User-defined title; null until set')]
         public ?string $title,
-
+        #[OA\Property(type: 'string', nullable: true, description: 'Identifier (email) of the uploader; null for content uploaded before ownership tracking existed')]
+        public ?string $ownerId,
         #[OA\Property(type: 'string', example: 'video.mp4')]
         public string $filename,
-
         #[OA\Property(type: 'string', format: 'uuid')]
         public string $uploadId,
-
         #[OA\Property(type: 'string', example: 'video/mp4')]
         public string $mimeType,
-
         #[OA\Property(type: 'integer', description: 'File size in bytes')]
         public int $fileSize,
-
         #[OA\Property(type: 'number', format: 'float', nullable: true, description: 'Duration in seconds')]
         public ?float $duration,
-
         #[OA\Property(type: 'boolean', description: 'Whether a JPEG thumbnail has been generated')]
         public bool $hasThumbnail,
-
+        #[OA\Property(type: 'integer', description: 'Number of candidate thumbnail frames available to choose from via /thumbnail/candidates/{index}')]
+        public int $thumbnailCandidateCount,
         #[OA\Property(type: 'string', format: 'date-time')]
         public string $createdAt,
-
         #[OA\Property(type: 'string', format: 'date-time', nullable: true, description: 'Set when the video has been archived')]
         public ?string $deletedAt,
-
         #[OA\Property(nullable: true, ref: new Model(type: TranscriptionDto::class))]
         public ?TranscriptionDto $transcription,
     ) {
@@ -58,12 +51,14 @@ final readonly class ContentDto
             ok: true,
             id: (string) $content->getId(),
             title: $content->getTitle(),
+            ownerId: $content->getOwnerId(),
             filename: $content->getFilename(),
             uploadId: $content->getUploadId(),
             mimeType: $content->getMimeType(),
             fileSize: $content->getFileSize(),
             duration: $content->getDuration(),
             hasThumbnail: $content->hasThumbnail(),
+            thumbnailCandidateCount: $content->getThumbnailCandidateCount(),
             createdAt: $content->getCreatedAt()->format(\DateTimeInterface::ATOM),
             deletedAt: $content->getDeletedAt()?->format(\DateTimeInterface::ATOM),
             transcription: null !== $content->getTranscription()

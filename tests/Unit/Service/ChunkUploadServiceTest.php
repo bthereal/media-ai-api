@@ -128,7 +128,9 @@ class ChunkUploadServiceTest extends TestCase
         try {
             $this->service->validateChunk(
                 '550e8400-e29b-41d4-a716-446655440000',
-                0, 1, 'video.mp4',
+                0,
+                1,
+                'video.mp4',
                 $this->makeChunk(11 * 1024 * 1024),
             );
         } catch (ValidationException $caught) {
@@ -176,9 +178,23 @@ class ChunkUploadServiceTest extends TestCase
         $uploadId = '550e8400-e29b-41d4-a716-446655440000';
 
         $this->filesystem->method('fileExists')->willReturn(true);
-        $this->filesystem->method('read')->willReturn('chunk-data');
-        $this->filesystem->expects($this->once())->method('write')
-            ->with("{$uploadId}/video.mp4", 'chunk-datachunk-data');
+        // assembleIfComplete() reads/writes via streams (readStream/writeStream), not
+        // the plain string read()/write() — each chunk needs its own fresh resource
+        // since the service fclose()s the source stream after copying each one.
+        $this->filesystem->method('readStream')->willReturnCallback(static function (): mixed {
+            $stream = fopen('php://memory', 'r+');
+            fwrite($stream, 'chunk-data');
+            rewind($stream);
+
+            return $stream;
+        });
+        $this->filesystem->expects($this->once())->method('writeStream')
+            ->with(
+                "{$uploadId}/video.mp4",
+                $this->callback(static function (mixed $stream): bool {
+                    return is_resource($stream) && 'chunk-datachunk-data' === stream_get_contents($stream);
+                }),
+            );
         $this->filesystem->expects($this->once())->method('deleteDirectory')
             ->with("temp/{$uploadId}");
 

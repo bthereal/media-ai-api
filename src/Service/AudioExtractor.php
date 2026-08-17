@@ -18,7 +18,7 @@ class AudioExtractor
      */
     public function extractAudio(string $mp4Path): string
     {
-        $mp3Path = tempnam(sys_get_temp_dir(), 'audio_').'.mp3';
+        $mp3Path = tempnam(sys_get_temp_dir(), 'audio_') . '.mp3';
 
         $process = new Process([
             'ffmpeg',
@@ -38,7 +38,7 @@ class AudioExtractor
             }
 
             throw new TranscriptionException(
-                'Audio extraction failed: '.$process->getErrorOutput(),
+                'Audio extraction failed: ' . $process->getErrorOutput(),
                 previous: $e,
             );
         }

@@ -28,6 +28,10 @@ security:
         - { path: ^/api/auth/token$, roles: PUBLIC_ACCESS }
         - { path: ^/api/content/.+/stream$, roles: PUBLIC_ACCESS }
         - { path: ^/api/content/.+/thumbnail$, roles: PUBLIC_ACCESS }
+        - { path: ^/api/content/.+/thumbnail/candidates/\d+$, roles: PUBLIC_ACCESS }
+        - { path: ^/api/content/.+/watch-events$, roles: PUBLIC_ACCESS }
+        - { path: ^/api/content/.+/progress$, roles: PUBLIC_ACCESS }
+        - { path: ^/api/content/.+/captions/.+\.vtt$, roles: PUBLIC_ACCESS }
         - { path: ^/api, roles: IS_AUTHENTICATED_FULLY }
 
 when@test:

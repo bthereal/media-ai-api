@@ -47,4 +47,13 @@ class VideoSummaryService
         $vectorDoc = $this->vectorizer->vectorize($doc);
         $this->store->add($vectorDoc);
     }
+
+    /**
+     * Removes a video's embedding from the vector store — called when its Content
+     * is archived, so a deleted video stops surfacing in semantic search results.
+     */
+    public function removeEmbedding(string $contentId): void
+    {
+        $this->store->remove($contentId);
+    }
 }

@@ -38,6 +38,60 @@ class VideoTranscription
     #[ORM\Column(type: Types::TEXT, nullable: true)]
     private ?string $summary = null;
 
+    /**
+     * @var list<array{start: float, end: float, text: string}>|null
+     */
+    #[ORM\Column(type: Types::JSON, nullable: true)]
+    private ?array $segments = null;
+
+    /**
+     * Null until the post-transcription chapter-generation step has run; an empty
+     * array means it ran but produced no chapters (e.g. too little transcript).
+     *
+     * @var list<array{title: string, startSeconds: float, endSeconds: float}>|null
+     */
+    #[ORM\Column(type: Types::JSON, nullable: true)]
+    private ?array $chapters = null;
+
+    /**
+     * Raw language name as detected by Whisper (e.g. "english") — null until completed.
+     */
+    #[ORM\Column(type: Types::STRING, length: 50, nullable: true)]
+    private ?string $language = null;
+
+    /**
+     * Cached AI-translated captions, keyed by ISO 639-1 target code.
+     *
+     * @var array<string, list<array{start: float, end: float, text: string}>>|null
+     */
+    #[ORM\Column(type: Types::JSON, nullable: true)]
+    private ?array $translations = null;
+
+    /**
+     * Null until the post-transcription tagging step has run; an empty array
+     * means it ran but produced no tags.
+     *
+     * @var list<string>|null
+     */
+    #[ORM\Column(type: Types::JSON, nullable: true)]
+    private ?array $tags = null;
+
+    /**
+     * Single AI-assigned category (e.g. "Product Demo") — null until tagged.
+     */
+    #[ORM\Column(type: Types::STRING, length: 100, nullable: true)]
+    private ?string $category = null;
+
+    /**
+     * Caption languages the uploader asked to have generated eagerly (in addition
+     * to whatever a viewer might request lazily later) — null/empty means none
+     * were requested at upload time.
+     *
+     * @var list<string>|null
+     */
+    #[ORM\Column(type: Types::JSON, nullable: true)]
+    private ?array $requestedCaptionLanguages = null;
+
     #[ORM\Column(type: Types::DATETIME_IMMUTABLE)]
     private \DateTimeImmutable $createdAt;
 
@@ -107,11 +161,100 @@ class VideoTranscription
         $this->status = 'processing';
     }
 
-    public function markCompleted(string $transcription): void
+    /**
+     * @param list<array{start: float, end: float, text: string}> $segments
+     */
+    public function markCompleted(string $transcription, array $segments = [], ?string $language = null): void
     {
         $this->status = 'completed';
         $this->transcription = $transcription;
+        $this->segments = $segments;
+        $this->language = $language;
         $this->completedAt = new \DateTimeImmutable();
+    }
+
+    public function getLanguage(): ?string
+    {
+        return $this->language;
+    }
+
+    /**
+     * @return list<array{start: float, end: float, text: string}>|null
+     */
+    public function getTranslation(string $langCode): ?array
+    {
+        return $this->translations[$langCode] ?? null;
+    }
+
+    /**
+     * @param list<array{start: float, end: float, text: string}> $segments
+     */
+    public function setTranslation(string $langCode, array $segments): void
+    {
+        $this->translations ??= [];
+        $this->translations[$langCode] = $segments;
+    }
+
+    /**
+     * @return list<array{start: float, end: float, text: string}>|null
+     */
+    public function getSegments(): ?array
+    {
+        return $this->segments;
+    }
+
+    /**
+     * @return list<array{title: string, startSeconds: float, endSeconds: float}>|null
+     */
+    public function getChapters(): ?array
+    {
+        return $this->chapters;
+    }
+
+    /**
+     * @param list<array{title: string, startSeconds: float, endSeconds: float}> $chapters
+     */
+    public function setChapters(array $chapters): void
+    {
+        $this->chapters = $chapters;
+    }
+
+    /**
+     * @return list<string>|null
+     */
+    public function getTags(): ?array
+    {
+        return $this->tags;
+    }
+
+    /**
+     * @param list<string> $tags
+     */
+    public function setTagsAndCategory(array $tags, ?string $category): void
+    {
+        $this->tags = $tags;
+        $this->category = $category;
+    }
+
+    public function getCategory(): ?string
+    {
+        return $this->category;
+    }
+
+    /**
+     * @return list<string>
+     */
+    public function getRequestedCaptionLanguages(): array
+    {
+        return $this->requestedCaptionLanguages ?? [];
+    }
+
+    /**
+     * @param list<string> $languages
+     */
+    public function setRequestedCaptionLanguages(array $languages): void
+    {
+        $this->requestedCaptionLanguages = $languages;
     }
 
     public function markFailed(string $errorMessage): void

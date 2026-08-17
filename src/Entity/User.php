@@ -39,8 +39,8 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     #[ORM\Column(type: 'json')]
     private array $permissions = [];
 
-    #[ORM\Column]
-    private bool $active = true;
+    #[ORM\Column(nullable: true)]
+    private ?\DateTimeImmutable $deactivatedAt = null;
 
     #[ORM\Column]
     private \DateTimeImmutable $createdAt;
@@ -78,17 +78,20 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
         return $this;
     }
 
+    #[\Override]
     public function getUserIdentifier(): string
     {
         return $this->email;
     }
 
     /** @return list<string> */
+    #[\Override]
     public function getRoles(): array
     {
         return ['ROLE_USER'];
     }
 
+    #[\Override]
     public function getPassword(): string
     {
         return $this->password;
@@ -101,7 +104,9 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
         return $this;
     }
 
-    public function eraseCredentials(): void {}
+    public function eraseCredentials(): void
+    {
+    }
 
     public function getFirstName(): string
     {
@@ -157,14 +162,22 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
 
     public function isActive(): bool
     {
-        return $this->active;
+        return null === $this->deactivatedAt;
     }
 
-    public function setActive(bool $active): static
+    public function getDeactivatedAt(): ?\DateTimeImmutable
     {
-        $this->active = $active;
+        return $this->deactivatedAt;
+    }
 
-        return $this;
+    public function deactivate(): void
+    {
+        $this->deactivatedAt = new \DateTimeImmutable();
+    }
+
+    public function reactivate(): void
+    {
+        $this->deactivatedAt = null;
     }
 
     public function getCreatedAt(): \DateTimeImmutable

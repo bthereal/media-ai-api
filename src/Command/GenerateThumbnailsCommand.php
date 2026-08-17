@@ -27,6 +27,7 @@ class GenerateThumbnailsCommand extends Command
         parent::__construct();
     }
 
+    #[\Override]
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
         $io = new SymfonyStyle($input, $output);
@@ -47,10 +48,11 @@ class GenerateThumbnailsCommand extends Command
 
         foreach ($items as $content) {
             $label = sprintf('%s (%s)', $content->getFilename(), $content->getUploadId());
-            $ok = $this->thumbnailGenerator->generate($content->getUploadId(), $content->getFilename());
+            $candidateCount = $this->thumbnailGenerator->generate($content->getUploadId(), $content->getFilename(), $content->getDuration());
 
-            if ($ok) {
+            if ($candidateCount > 0) {
                 $content->setHasThumbnail(true);
+                $content->setThumbnailCandidateCount($candidateCount);
                 $this->entityManager->flush();
                 $io->writeln("  <info>✓</info> {$label}");
                 ++$succeeded;

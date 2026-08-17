@@ -8,6 +8,8 @@ use App\Entity\Content;
 use App\Entity\VideoTranscription;
 use App\Exception\TranscriptionException;
 use App\Message\EmbedVideoSummaryMessage;
+use App\Message\GenerateChaptersMessage;
+use App\Message\GenerateTagsMessage;
 use App\Message\TranscribeVideoMessage;
 use App\MessageHandler\TranscribeVideoHandler;
 use App\Repository\ContentRepository;
@@ -65,7 +67,11 @@ class TranscribeVideoHandlerTest extends TestCase
             ->expects($this->once())
             ->method('transcribe')
             ->with(self::UPLOAD_ID, self::FILENAME)
-            ->willReturn('The transcribed text.');
+            ->willReturn([
+                'text' => 'The transcribed text.',
+                'segments' => [['start' => 0.0, 'end' => 5.0, 'text' => 'The transcribed text.']],
+                'language' => 'english',
+            ]);
 
         $this->em->expects($this->exactly(2))->method('flush');
 
@@ -74,17 +80,26 @@ class TranscribeVideoHandlerTest extends TestCase
 
         $this->contentRepo->method('findOneBy')->willReturn($content);
 
+        $dispatchedMessages = [];
         $this->bus
-            ->expects($this->once())
+            ->expects($this->exactly(3))
             ->method('dispatch')
-            ->with($this->isInstanceOf(EmbedVideoSummaryMessage::class))
-            ->willReturn(new Envelope(new EmbedVideoSummaryMessage('660e8400-e29b-41d4-a716-446655440001')));
+            ->willReturnCallback(function (object $message) use (&$dispatchedMessages) {
+                $dispatchedMessages[] = $message;
+
+                return new Envelope($message);
+            });
 
         ($this->handler)(new TranscribeVideoMessage(self::UPLOAD_ID, self::FILENAME));
 
         $this->assertSame('completed', $record->getStatus());
         $this->assertSame('The transcribed text.', $record->getTranscription());
+        $this->assertSame([['start' => 0.0, 'end' => 5.0, 'text' => 'The transcribed text.']], $record->getSegments());
+        $this->assertSame('english', $record->getLanguage());
         $this->assertNotNull($record->getCompletedAt());
+        $this->assertInstanceOf(EmbedVideoSummaryMessage::class, $dispatchedMessages[0]);
+        $this->assertInstanceOf(GenerateChaptersMessage::class, $dispatchedMessages[1]);
+        $this->assertInstanceOf(GenerateTagsMessage::class, $dispatchedMessages[2]);
     }
 
     public function testHandlerSetsStatusFailedAndRethrowsOnException(): void

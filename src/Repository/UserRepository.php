@@ -21,6 +21,7 @@ class UserRepository extends ServiceEntityRepository implements PasswordUpgrader
         parent::__construct($registry, User::class);
     }
 
+    #[\Override]
     public function upgradePassword(PasswordAuthenticatedUserInterface $user, string $newHashedPassword): void
     {
         if (!$user instanceof User) {
@@ -33,6 +34,6 @@ class UserRepository extends ServiceEntityRepository implements PasswordUpgrader
 
     public function findActiveByEmail(string $email): ?User
     {
-        return $this->findOneBy(['email' => $email, 'active' => true]);
+        return $this->findOneBy(['email' => $email, 'deactivatedAt' => null]);
     }
 }

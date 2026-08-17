@@ -12,6 +12,7 @@ use Symfony\Component\Uid\Uuid;
 
 #[ORM\Entity(repositoryClass: ContentRepository::class)]
 #[ORM\Table(name: 'content')]
+#[ORM\Index(columns: ['owner_id'], name: 'idx_content_owner_id')]
 class Content
 {
     #[ORM\Id]
@@ -41,8 +42,14 @@ class Content
     #[ORM\Column(type: Types::STRING, length: 255, nullable: true)]
     private ?string $title = null;
 
+    #[ORM\Column(type: Types::STRING, length: 255, nullable: true)]
+    private ?string $ownerId = null;
+
     #[ORM\Column(type: Types::BOOLEAN)]
     private bool $hasThumbnail = false;
+
+    #[ORM\Column(type: Types::INTEGER)]
+    private int $thumbnailCandidateCount = 0;
 
     #[ORM\Column(type: Types::DATETIME_IMMUTABLE)]
     private \DateTimeImmutable $createdAt;
@@ -61,6 +68,7 @@ class Content
         int $fileSize,
         string $fileHash,
         ?float $duration = null,
+        ?string $ownerId = null,
     ) {
         $this->filename = $filename;
         $this->uploadId = $uploadId;
@@ -68,6 +76,7 @@ class Content
         $this->fileSize = $fileSize;
         $this->fileHash = $fileHash;
         $this->duration = $duration;
+        $this->ownerId = $ownerId;
         $this->createdAt = new \DateTimeImmutable();
     }
 
@@ -116,6 +125,11 @@ class Content
         $this->title = $title;
     }
 
+    public function getOwnerId(): ?string
+    {
+        return $this->ownerId;
+    }
+
     public function hasThumbnail(): bool
     {
         return $this->hasThumbnail;
@@ -124,6 +138,16 @@ class Content
     public function setHasThumbnail(bool $hasThumbnail): void
     {
         $this->hasThumbnail = $hasThumbnail;
+    }
+
+    public function getThumbnailCandidateCount(): int
+    {
+        return $this->thumbnailCandidateCount;
+    }
+
+    public function setThumbnailCandidateCount(int $count): void
+    {
+        $this->thumbnailCandidateCount = $count;
     }
 
     public function getCreatedAt(): \DateTimeImmutable
@@ -139,6 +163,16 @@ class Content
     public function archive(): void
     {
         $this->deletedAt = new \DateTimeImmutable();
+    }
+
+    /**
+     * Un-archives a previously-deleted Content — used when an identical file
+     * (matched by hash) is uploaded again, so it's reactivated in place rather
+     * than creating a duplicate row and a duplicate search embedding.
+     */
+    public function unarchive(): void
+    {
+        $this->deletedAt = null;
     }
 
     public function getTranscription(): ?VideoTranscription

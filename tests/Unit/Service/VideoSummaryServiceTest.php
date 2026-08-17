@@ -119,4 +119,14 @@ class VideoSummaryServiceTest extends TestCase
 
         $this->assertFalse($captured->getMetadata()->hasTitle());
     }
+
+    public function testRemoveEmbeddingCallsStoreRemove(): void
+    {
+        $this->store
+            ->expects($this->once())
+            ->method('remove')
+            ->with('550e8400-e29b-41d4-a716-446655440000');
+
+        $this->service->removeEmbedding('550e8400-e29b-41d4-a716-446655440000');
+    }
 }
