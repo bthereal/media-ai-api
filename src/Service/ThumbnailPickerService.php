@@ -29,9 +29,9 @@ class ThumbnailPickerService
         $count = count($candidatePaths);
         $prompt = sprintf(
             'Here are %d candidate thumbnail frames from a video, numbered 1 to %d in the order shown. '
-            .'Pick the single frame that best represents the video and would make the most compelling thumbnail — '
-            .'prefer frames with faces, readable on-screen text, or high visual contrast, and avoid black, blank, '
-            .'blurry, or mid-transition frames. Respond with ONLY the number of the best frame, nothing else.',
+            . 'Pick the single frame that best represents the video and would make the most compelling thumbnail — '
+            . 'prefer frames with faces, readable on-screen text, or high visual contrast, and avoid black, blank, '
+            . 'blurry, or mid-transition frames. Respond with ONLY the number of the best frame, nothing else.',
             $count,
             $count,
         );

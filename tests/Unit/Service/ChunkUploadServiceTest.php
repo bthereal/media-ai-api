@@ -128,7 +128,9 @@ class ChunkUploadServiceTest extends TestCase
         try {
             $this->service->validateChunk(
                 '550e8400-e29b-41d4-a716-446655440000',
-                0, 1, 'video.mp4',
+                0,
+                1,
+                'video.mp4',
                 $this->makeChunk(11 * 1024 * 1024),
             );
         } catch (ValidationException $caught) {

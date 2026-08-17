@@ -41,7 +41,7 @@ class VideoSimilaritySearch
 
             $metadata = $doc->getMetadata();
             $text = $metadata->hasText() ? ($metadata->getText() ?? '') : '';
-            $excerpt = mb_strlen($text) > 300 ? mb_substr($text, 0, 300).'…' : $text;
+            $excerpt = mb_strlen($text) > 300 ? mb_substr($text, 0, 300) . '…' : $text;
 
             $results[] = \sprintf("**%s** (id:%s)\n%s", $title, $id, $excerpt);
         }

@@ -35,7 +35,7 @@ class VideoTranscriptionService
             $content = $this->filesystem->read($path);
         } catch (\Throwable $e) {
             throw new TranscriptionException(
-                "Failed to read file {$path}: ".$e->getMessage(),
+                "Failed to read file {$path}: " . $e->getMessage(),
                 previous: $e,
             );
         }
@@ -72,7 +72,7 @@ class VideoTranscriptionService
             throw $e;
         } catch (\Throwable $e) {
             throw new TranscriptionException(
-                "Transcription failed for {$uploadId}/{$filename}: ".$e->getMessage(),
+                "Transcription failed for {$uploadId}/{$filename}: " . $e->getMessage(),
                 previous: $e,
             );
         } finally {

@@ -54,7 +54,7 @@ class VideoChapterService
 
     private function formatTimestamp(float $seconds): string
     {
-        $minutes = (int) floor($seconds / 60);
+        $minutes = (int) floor($seconds / 60.0);
         $secs = (int) floor(fmod($seconds, 60));
 
         return sprintf('%d:%02d', $minutes, $secs);
@@ -74,7 +74,7 @@ class VideoChapterService
         $decoded = json_decode($cleaned, true);
 
         if (!is_array($decoded)) {
-            throw new \RuntimeException('video_chapters agent did not return a JSON array: '.$raw);
+            throw new \RuntimeException('video_chapters agent did not return a JSON array: ' . $raw);
         }
 
         $chapters = [];
@@ -85,7 +85,7 @@ class VideoChapterService
 
             $title = is_string($entry['title'] ?? null) && '' !== trim($entry['title'])
                 ? trim($entry['title'])
-                : sprintf('Chapter %d', $index + 1);
+                : sprintf('Chapter %d', (int) $index + 1);
 
             $start = max(0.0, (float) $entry['startSeconds']);
             $end = (float) $entry['endSeconds'];

@@ -60,7 +60,7 @@ class VideoTranscriptionServiceTest extends TestCase
         $this->filesystem
             ->expects($this->once())
             ->method('read')
-            ->with(self::UPLOAD_ID.'/'.self::FILENAME)
+            ->with(self::UPLOAD_ID . '/' . self::FILENAME)
             ->willReturn('fake-mp4-binary-content');
 
         $this->audioExtractor
@@ -98,7 +98,7 @@ class VideoTranscriptionServiceTest extends TestCase
     {
         $this->filesystem
             ->method('read')
-            ->willThrowException(UnableToReadFile::fromLocation(self::UPLOAD_ID.'/'.self::FILENAME));
+            ->willThrowException(UnableToReadFile::fromLocation(self::UPLOAD_ID . '/' . self::FILENAME));
 
         $this->expectException(TranscriptionException::class);
         $this->expectExceptionMessage('Failed to read file');

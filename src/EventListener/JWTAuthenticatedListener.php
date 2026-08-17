@@ -23,7 +23,9 @@ use Symfony\Component\Security\Core\Exception\CustomUserMessageAuthenticationExc
 #[AsEventListener(event: Events::JWT_AUTHENTICATED)]
 class JWTAuthenticatedListener
 {
-    public function __construct(private readonly TenantContext $tenantContext) {}
+    public function __construct(private readonly TenantContext $tenantContext)
+    {
+    }
 
     public function __invoke(JWTAuthenticatedEvent $event): void
     {

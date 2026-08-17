@@ -226,7 +226,7 @@ class AuthControllerTest extends WebTestCase
         $this->actAsEditor();
 
         $client = static::getClient();
-        $client->request('GET', self::USERS_ENDPOINT.'/'.$target->getId());
+        $client->request('GET', self::USERS_ENDPOINT . '/' . $target->getId());
 
         $this->assertSame(403, $client->getResponse()->getStatusCode());
     }
@@ -236,7 +236,7 @@ class AuthControllerTest extends WebTestCase
         $this->actAsAdmin();
 
         $client = static::getClient();
-        $client->request('GET', self::USERS_ENDPOINT.'/550e8400-e29b-41d4-a716-446655440000');
+        $client->request('GET', self::USERS_ENDPOINT . '/550e8400-e29b-41d4-a716-446655440000');
 
         $this->assertSame(404, $client->getResponse()->getStatusCode());
     }
@@ -247,7 +247,7 @@ class AuthControllerTest extends WebTestCase
         $this->actAsAdmin();
 
         $client = static::getClient();
-        $client->request('GET', self::USERS_ENDPOINT.'/'.$target->getId());
+        $client->request('GET', self::USERS_ENDPOINT . '/' . $target->getId());
 
         $this->assertSame(200, $client->getResponse()->getStatusCode());
         $body = json_decode($client->getResponse()->getContent(), true);
@@ -261,7 +261,7 @@ class AuthControllerTest extends WebTestCase
         $this->actAsEditor();
 
         $client = static::getClient();
-        $client->request('POST', self::USERS_ENDPOINT.'/'.$target->getId().'/deactivate');
+        $client->request('POST', self::USERS_ENDPOINT . '/' . $target->getId() . '/deactivate');
 
         $this->assertSame(403, $client->getResponse()->getStatusCode());
     }
@@ -272,7 +272,7 @@ class AuthControllerTest extends WebTestCase
         $this->actAsAdmin();
 
         $client = static::getClient();
-        $client->request('POST', self::USERS_ENDPOINT.'/'.$target->getId().'/deactivate');
+        $client->request('POST', self::USERS_ENDPOINT . '/' . $target->getId() . '/deactivate');
 
         $this->assertSame(200, $client->getResponse()->getStatusCode());
         $body = json_decode($client->getResponse()->getContent(), true);
@@ -291,7 +291,7 @@ class AuthControllerTest extends WebTestCase
         $this->actAsAdmin();
 
         $client = static::getClient();
-        $client->request('POST', self::USERS_ENDPOINT.'/'.$target->getId().'/deactivate');
+        $client->request('POST', self::USERS_ENDPOINT . '/' . $target->getId() . '/deactivate');
 
         $this->assertSame(200, $client->getResponse()->getStatusCode());
     }
@@ -302,7 +302,7 @@ class AuthControllerTest extends WebTestCase
         $this->actAsAdminUser($admin);
 
         $client = static::getClient();
-        $client->request('POST', self::USERS_ENDPOINT.'/'.$admin->getId().'/deactivate');
+        $client->request('POST', self::USERS_ENDPOINT . '/' . $admin->getId() . '/deactivate');
 
         $this->assertSame(422, $client->getResponse()->getStatusCode());
         $body = json_decode($client->getResponse()->getContent(), true);
@@ -317,7 +317,7 @@ class AuthControllerTest extends WebTestCase
         $this->actAsEditor();
 
         $client = static::getClient();
-        $client->request('POST', self::USERS_ENDPOINT.'/'.$target->getId().'/reactivate');
+        $client->request('POST', self::USERS_ENDPOINT . '/' . $target->getId() . '/reactivate');
 
         $this->assertSame(403, $client->getResponse()->getStatusCode());
     }
@@ -330,7 +330,7 @@ class AuthControllerTest extends WebTestCase
         $this->actAsAdmin();
 
         $client = static::getClient();
-        $client->request('POST', self::USERS_ENDPOINT.'/'.$target->getId().'/reactivate');
+        $client->request('POST', self::USERS_ENDPOINT . '/' . $target->getId() . '/reactivate');
 
         $this->assertSame(200, $client->getResponse()->getStatusCode());
         $body = json_decode($client->getResponse()->getContent(), true);

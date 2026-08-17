@@ -38,7 +38,7 @@ class AnalyticsControllerTest extends WebTestCase
     {
         $content = new Content(
             filename: $filename,
-            uploadId: '550e8400-e29b-41d4-a716-'.substr(str_pad($fileHashSeed, 12, '0', \STR_PAD_LEFT), -12),
+            uploadId: '550e8400-e29b-41d4-a716-' . substr(str_pad($fileHashSeed, 12, '0', \STR_PAD_LEFT), -12),
             mimeType: 'video/mp4',
             fileSize: 1024,
             fileHash: str_pad($fileHashSeed, 64, '0', \STR_PAD_LEFT),
@@ -56,7 +56,9 @@ class AnalyticsControllerTest extends WebTestCase
         $client->request(
             'POST',
             '/api/content/550e8400-e29b-41d4-a716-446655440000/watch-events',
-            [], [], ['CONTENT_TYPE' => 'application/json'],
+            [],
+            [],
+            ['CONTENT_TYPE' => 'application/json'],
             json_encode(['eventType' => 'play', 'positionSeconds' => 0]),
         );
 
@@ -70,7 +72,9 @@ class AnalyticsControllerTest extends WebTestCase
         $client->request(
             'POST',
             "/api/content/{$content->getId()}/watch-events",
-            [], [], ['CONTENT_TYPE' => 'application/json'],
+            [],
+            [],
+            ['CONTENT_TYPE' => 'application/json'],
             json_encode(['eventType' => 'bogus', 'positionSeconds' => 0]),
         );
 
@@ -86,7 +90,9 @@ class AnalyticsControllerTest extends WebTestCase
         $client->request(
             'POST',
             "/api/content/{$content->getId()}/watch-events",
-            [], [], ['CONTENT_TYPE' => 'application/json'],
+            [],
+            [],
+            ['CONTENT_TYPE' => 'application/json'],
             json_encode(['eventType' => 'play', 'positionSeconds' => -5]),
         );
 
@@ -100,7 +106,9 @@ class AnalyticsControllerTest extends WebTestCase
         $client->request(
             'POST',
             "/api/content/{$content->getId()}/watch-events",
-            [], [], ['CONTENT_TYPE' => 'application/json'],
+            [],
+            [],
+            ['CONTENT_TYPE' => 'application/json'],
             json_encode(['eventType' => 'progress', 'positionSeconds' => 12.5]),
         );
 

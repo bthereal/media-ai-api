@@ -16,10 +16,8 @@ final readonly class PlaylistItemDto
     public function __construct(
         #[OA\Property(type: 'string', format: 'uuid')]
         public string $id,
-
         #[OA\Property(type: 'integer')]
         public int $position,
-
         #[OA\Property(ref: new Model(type: ContentDto::class))]
         public ContentDto $content,
     ) {

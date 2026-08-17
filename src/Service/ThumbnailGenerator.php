@@ -36,14 +36,14 @@ class ThumbnailGenerator
             return 0;
         }
 
-        $tmpVideo = tempnam(sys_get_temp_dir(), 'thumb_v_').'.mp4';
+        $tmpVideo = tempnam(sys_get_temp_dir(), 'thumb_v_') . '.mp4';
         file_put_contents($tmpVideo, $videoContent);
 
         $candidates = [];
 
         try {
             foreach (self::candidateSeekTimes($duration) as $seekSeconds) {
-                $tmpJpeg = tempnam(sys_get_temp_dir(), 'thumb_j_').'.jpg';
+                $tmpJpeg = tempnam(sys_get_temp_dir(), 'thumb_j_') . '.jpg';
                 if ($this->runFfmpeg($tmpVideo, $tmpJpeg, $seekSeconds)) {
                     $candidates[] = $tmpJpeg;
                 } else {
@@ -65,7 +65,7 @@ class ThumbnailGenerator
             $bestPath = $this->pickBest($candidates);
 
             $this->filesystem->write(
-                "{$uploadId}/".self::THUMBNAIL_PATH,
+                "{$uploadId}/" . self::THUMBNAIL_PATH,
                 file_get_contents($bestPath),
             );
 
@@ -84,7 +84,7 @@ class ThumbnailGenerator
 
     public static function thumbnailPath(string $uploadId): string
     {
-        return "{$uploadId}/".self::THUMBNAIL_PATH;
+        return "{$uploadId}/" . self::THUMBNAIL_PATH;
     }
 
     public static function candidatePath(string $uploadId, int $index): string
@@ -137,7 +137,7 @@ class ThumbnailGenerator
             '-i', $input,
             '-ss', (string) $seekSeconds,
             '-vframes', '1',
-            '-vf', 'scale='.self::WIDTH.':-1',
+            '-vf', 'scale=' . self::WIDTH . ':-1',
             '-q:v', '3',
             '-y',
             $output,

@@ -38,7 +38,7 @@ class CaptionTranslationService
         $prompt = sprintf(
             "Target language: %s\n\n%s",
             $targetLanguageLabel,
-            json_encode(array_values($lines), \JSON_UNESCAPED_UNICODE),
+            json_encode($lines, \JSON_UNESCAPED_UNICODE),
         );
 
         $result = $this->translatorAgent->call(new MessageBag(Message::ofUser($prompt)));
@@ -79,7 +79,7 @@ class CaptionTranslationService
 
         foreach ($decoded as $line) {
             if (!is_string($line)) {
-                throw new \RuntimeException('video_translator agent returned a non-string line: '.$raw);
+                throw new \RuntimeException('video_translator agent returned a non-string line: ' . $raw);
             }
         }
 

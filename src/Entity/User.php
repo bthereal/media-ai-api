@@ -78,17 +78,20 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
         return $this;
     }
 
+    #[\Override]
     public function getUserIdentifier(): string
     {
         return $this->email;
     }
 
     /** @return list<string> */
+    #[\Override]
     public function getRoles(): array
     {
         return ['ROLE_USER'];
     }
 
+    #[\Override]
     public function getPassword(): string
     {
         return $this->password;
@@ -101,7 +104,9 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
         return $this;
     }
 
-    public function eraseCredentials(): void {}
+    public function eraseCredentials(): void
+    {
+    }
 
     public function getFirstName(): string
     {

@@ -1,0 +1,14 @@
+<?xml version="1.0"?>
+<ruleset name="media-ai-api">
+    <description>PSR-12 coding standard for the media-ai-api backend.</description>
+
+    <arg name="basepath" value="."/>
+    <arg name="colors"/>
+    <arg name="parallel" value="8"/>
+    <arg value="np"/>
+
+    <file>src</file>
+    <file>tests</file>
+
+    <rule ref="PSR12"/>
+</ruleset>

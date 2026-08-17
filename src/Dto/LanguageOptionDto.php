@@ -14,7 +14,6 @@ final readonly class LanguageOptionDto
     public function __construct(
         #[OA\Property(type: 'string', example: 'es', description: 'ISO 639-1 code')]
         public string $code,
-
         #[OA\Property(type: 'string', example: 'Spanish')]
         public string $label,
     ) {

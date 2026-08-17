@@ -133,7 +133,7 @@ class ContentControllerTest extends WebTestCase
         $this->assertSame(['Interview', 'Tutorial'], $body['availableCategories']);
 
         // Filtered: only the matching video
-        $client->request('GET', self::ENDPOINT.'?category=Tutorial');
+        $client->request('GET', self::ENDPOINT . '?category=Tutorial');
         $body = json_decode($client->getResponse()->getContent(), true);
         $this->assertCount(1, $body['items']);
         $this->assertSame('tutorial.mp4', $body['items'][0]['filename']);
@@ -176,7 +176,7 @@ class ContentControllerTest extends WebTestCase
         $this->assertCount(2, $body['items']);
 
         // owner=me: only the caller's own upload
-        $client->request('GET', self::ENDPOINT.'?owner=me');
+        $client->request('GET', self::ENDPOINT . '?owner=me');
         $body = json_decode($client->getResponse()->getContent(), true);
         $this->assertCount(1, $body['items']);
         $this->assertSame('mine.mp4', $body['items'][0]['filename']);
@@ -198,7 +198,7 @@ class ContentControllerTest extends WebTestCase
 
         $client = static::getClient();
 
-        $client->request('GET', self::ENDPOINT.'?page=1');
+        $client->request('GET', self::ENDPOINT . '?page=1');
         $body = json_decode($client->getResponse()->getContent(), true);
         $this->assertSame(200, $client->getResponse()->getStatusCode());
         $this->assertTrue($body['ok']);
@@ -209,7 +209,7 @@ class ContentControllerTest extends WebTestCase
         $this->assertTrue($body['hasNext']);
         $this->assertFalse($body['hasPrev']);
 
-        $client->request('GET', self::ENDPOINT.'?page=2');
+        $client->request('GET', self::ENDPOINT . '?page=2');
         $body2 = json_decode($client->getResponse()->getContent(), true);
         $this->assertCount(2, $body2['items']);
         $this->assertSame(2, $body2['page']);
@@ -255,7 +255,7 @@ class ContentControllerTest extends WebTestCase
     public function testGetReturnsNotFoundForUnknownId(): void
     {
         $client = static::getClient();
-        $client->request('GET', self::ENDPOINT.'/550e8400-e29b-41d4-a716-446655440000');
+        $client->request('GET', self::ENDPOINT . '/550e8400-e29b-41d4-a716-446655440000');
 
         $this->assertSame(404, $client->getResponse()->getStatusCode());
         $body = json_decode($client->getResponse()->getContent(), true);
@@ -277,7 +277,7 @@ class ContentControllerTest extends WebTestCase
         $this->em->flush();
 
         $client = static::getClient();
-        $client->request('GET', self::ENDPOINT.'/'.(string) $content->getId());
+        $client->request('GET', self::ENDPOINT . '/' . (string) $content->getId());
 
         $this->assertSame(200, $client->getResponse()->getStatusCode());
 
@@ -308,7 +308,7 @@ class ContentControllerTest extends WebTestCase
         $this->em->flush();
 
         $client = static::getClient();
-        $client->request('GET', self::ENDPOINT.'/'.(string) $content->getId());
+        $client->request('GET', self::ENDPOINT . '/' . (string) $content->getId());
 
         $this->assertSame(200, $client->getResponse()->getStatusCode());
 
@@ -336,7 +336,7 @@ class ContentControllerTest extends WebTestCase
         $this->em->flush();
 
         $client = static::getClient();
-        $client->request('GET', self::ENDPOINT.'/'.(string) $content->getId());
+        $client->request('GET', self::ENDPOINT . '/' . (string) $content->getId());
 
         $body = json_decode($client->getResponse()->getContent(), true);
         $this->assertSame(200, $client->getResponse()->getStatusCode());
@@ -348,7 +348,7 @@ class ContentControllerTest extends WebTestCase
     public function testStreamReturns404ForUnknownId(): void
     {
         $client = static::getClient();
-        $client->request('GET', self::ENDPOINT.'/550e8400-e29b-41d4-a716-446655440000/stream');
+        $client->request('GET', self::ENDPOINT . '/550e8400-e29b-41d4-a716-446655440000/stream');
 
         $this->assertSame(404, $client->getResponse()->getStatusCode());
     }
@@ -362,7 +362,7 @@ class ContentControllerTest extends WebTestCase
         $filename = 'test.mp4';
 
         // Place a fake file where the controller will look for it
-        $uploadsDir = static::getContainer()->getParameter('kernel.project_dir').'/var/uploads';
+        $uploadsDir = static::getContainer()->getParameter('kernel.project_dir') . '/var/uploads';
         @mkdir("{$uploadsDir}/{$uploadId}", 0777, true);
         file_put_contents("{$uploadsDir}/{$uploadId}/{$filename}", 'fake-mp4-content');
 
@@ -377,7 +377,7 @@ class ContentControllerTest extends WebTestCase
         $this->em->flush();
 
         $client = static::getClient();
-        $client->request('GET', self::ENDPOINT.'/'.(string) $content->getId().'/stream');
+        $client->request('GET', self::ENDPOINT . '/' . (string) $content->getId() . '/stream');
 
         $response = $client->getResponse();
         $this->assertSame(200, $response->getStatusCode());
@@ -392,7 +392,7 @@ class ContentControllerTest extends WebTestCase
     public function testThumbnailCandidateServesJpeg(): void
     {
         $uploadId = '880e8400-e29b-41d4-a716-446655440003';
-        $uploadsDir = static::getContainer()->getParameter('kernel.project_dir').'/var/uploads';
+        $uploadsDir = static::getContainer()->getParameter('kernel.project_dir') . '/var/uploads';
         @mkdir("{$uploadsDir}/{$uploadId}", 0777, true);
         file_put_contents("{$uploadsDir}/{$uploadId}/thumb-candidate-0.jpg", 'fake-jpeg-bytes');
 
@@ -408,7 +408,7 @@ class ContentControllerTest extends WebTestCase
         $this->em->flush();
 
         $client = static::getClient();
-        $client->request('GET', self::ENDPOINT.'/'.(string) $content->getId().'/thumbnail/candidates/0');
+        $client->request('GET', self::ENDPOINT . '/' . (string) $content->getId() . '/thumbnail/candidates/0');
 
         $this->assertSame(200, $client->getResponse()->getStatusCode());
         $this->assertSame('fake-jpeg-bytes', $client->getResponse()->getContent());
@@ -432,7 +432,7 @@ class ContentControllerTest extends WebTestCase
         $this->em->flush();
 
         $client = static::getClient();
-        $client->request('GET', self::ENDPOINT.'/'.(string) $content->getId().'/thumbnail/candidates/5');
+        $client->request('GET', self::ENDPOINT . '/' . (string) $content->getId() . '/thumbnail/candidates/5');
 
         $this->assertSame(404, $client->getResponse()->getStatusCode());
     }
@@ -440,7 +440,7 @@ class ContentControllerTest extends WebTestCase
     public function testSelectThumbnailCopiesCandidateOverThumbnailAndSetsHasThumbnail(): void
     {
         $uploadId = '880e8400-e29b-41d4-a716-446655440005';
-        $uploadsDir = static::getContainer()->getParameter('kernel.project_dir').'/var/uploads';
+        $uploadsDir = static::getContainer()->getParameter('kernel.project_dir') . '/var/uploads';
         @mkdir("{$uploadsDir}/{$uploadId}", 0777, true);
         file_put_contents("{$uploadsDir}/{$uploadId}/thumb-candidate-1.jpg", 'candidate-one-bytes');
 
@@ -456,13 +456,13 @@ class ContentControllerTest extends WebTestCase
         $this->em->flush();
 
         $client = static::getClient();
-        $client->request('POST', self::ENDPOINT.'/'.(string) $content->getId().'/thumbnail/select', content: json_encode(['index' => 1]));
+        $client->request('POST', self::ENDPOINT . '/' . (string) $content->getId() . '/thumbnail/select', content: json_encode(['index' => 1]));
 
         $this->assertSame(200, $client->getResponse()->getStatusCode());
         $body = json_decode($client->getResponse()->getContent(), true);
         $this->assertTrue($body['hasThumbnail']);
 
-        $client->request('GET', self::ENDPOINT.'/'.(string) $content->getId().'/thumbnail');
+        $client->request('GET', self::ENDPOINT . '/' . (string) $content->getId() . '/thumbnail');
         $this->assertSame('candidate-one-bytes', $client->getResponse()->getContent());
 
         unlink("{$uploadsDir}/{$uploadId}/thumb-candidate-1.jpg");
@@ -484,7 +484,7 @@ class ContentControllerTest extends WebTestCase
         $this->em->flush();
 
         $client = static::getClient();
-        $client->request('POST', self::ENDPOINT.'/'.(string) $content->getId().'/thumbnail/select', content: json_encode(['index' => 9]));
+        $client->request('POST', self::ENDPOINT . '/' . (string) $content->getId() . '/thumbnail/select', content: json_encode(['index' => 9]));
 
         $this->assertSame(422, $client->getResponse()->getStatusCode());
     }
@@ -503,7 +503,7 @@ class ContentControllerTest extends WebTestCase
     public function testCaptionsReturns404ForUnknownContent(): void
     {
         $client = static::getClient();
-        $client->request('GET', self::ENDPOINT.'/550e8400-e29b-41d4-a716-446655440000/captions/en.vtt');
+        $client->request('GET', self::ENDPOINT . '/550e8400-e29b-41d4-a716-446655440000/captions/en.vtt');
 
         $this->assertSame(404, $client->getResponse()->getStatusCode());
     }
@@ -521,7 +521,7 @@ class ContentControllerTest extends WebTestCase
         $this->em->flush();
 
         $client = static::getClient();
-        $client->request('GET', self::ENDPOINT.'/'.(string) $content->getId().'/captions/en.vtt');
+        $client->request('GET', self::ENDPOINT . '/' . (string) $content->getId() . '/captions/en.vtt');
 
         $this->assertSame(404, $client->getResponse()->getStatusCode());
     }
@@ -547,7 +547,7 @@ class ContentControllerTest extends WebTestCase
         $this->em->flush();
 
         $client = static::getClient();
-        $client->request('GET', self::ENDPOINT.'/'.(string) $content->getId().'/captions/en.vtt');
+        $client->request('GET', self::ENDPOINT . '/' . (string) $content->getId() . '/captions/en.vtt');
 
         $response = $client->getResponse();
         $this->assertSame(200, $response->getStatusCode());
@@ -574,7 +574,7 @@ class ContentControllerTest extends WebTestCase
         $this->em->flush();
 
         $client = static::getClient();
-        $client->request('GET', self::ENDPOINT.'/'.(string) $content->getId().'/captions/xx.vtt');
+        $client->request('GET', self::ENDPOINT . '/' . (string) $content->getId() . '/captions/xx.vtt');
 
         $this->assertSame(404, $client->getResponse()->getStatusCode());
     }
@@ -582,7 +582,7 @@ class ContentControllerTest extends WebTestCase
     public function testRelatedReturns404ForUnknownContent(): void
     {
         $client = static::getClient();
-        $client->request('GET', self::ENDPOINT.'/550e8400-e29b-41d4-a716-446655440000/related');
+        $client->request('GET', self::ENDPOINT . '/550e8400-e29b-41d4-a716-446655440000/related');
 
         $this->assertSame(404, $client->getResponse()->getStatusCode());
     }
@@ -602,7 +602,7 @@ class ContentControllerTest extends WebTestCase
         // No retriever override: if the controller called it despite no completed
         // transcript, this would hit the real (unconfigured) service and error out.
         $client = static::getClient();
-        $client->request('GET', self::ENDPOINT.'/'.(string) $content->getId().'/related');
+        $client->request('GET', self::ENDPOINT . '/' . (string) $content->getId() . '/related');
 
         $this->assertSame(200, $client->getResponse()->getStatusCode());
         $body = json_decode($client->getResponse()->getContent(), true);
@@ -646,7 +646,7 @@ class ContentControllerTest extends WebTestCase
         ]);
 
         $client = static::getClient();
-        $client->request('GET', self::ENDPOINT.'/'.$selfId.'/related');
+        $client->request('GET', self::ENDPOINT . '/' . $selfId . '/related');
 
         $this->assertSame(200, $client->getResponse()->getStatusCode());
         $body = json_decode($client->getResponse()->getContent(), true);
@@ -689,7 +689,7 @@ class ContentControllerTest extends WebTestCase
         $this->setRetriever($docs);
 
         $client = static::getClient();
-        $client->request('GET', self::ENDPOINT.'/'.(string) $content->getId().'/related');
+        $client->request('GET', self::ENDPOINT . '/' . (string) $content->getId() . '/related');
 
         $body = json_decode($client->getResponse()->getContent(), true);
         $this->assertCount(5, $body['items']);
@@ -700,7 +700,7 @@ class ContentControllerTest extends WebTestCase
      */
     private function setRetriever(array $docs): void
     {
-        static::getContainer()->set('ai.retriever.video_transcript_embeds', new class($docs) implements RetrieverInterface {
+        static::getContainer()->set('ai.retriever.video_transcript_embeds', new class ($docs) implements RetrieverInterface {
             /**
              * @param list<VectorDocument> $docs
              */
@@ -734,7 +734,7 @@ class ContentControllerTest extends WebTestCase
         $this->assertSame(1, $countBefore);
 
         $client = static::getClient();
-        $client->request('DELETE', self::ENDPOINT.'/'.$contentId);
+        $client->request('DELETE', self::ENDPOINT . '/' . $contentId);
 
         $this->assertSame(200, $client->getResponse()->getStatusCode());
 
@@ -758,7 +758,7 @@ class ContentControllerTest extends WebTestCase
         $this->actAsUser('editor@example.com', ['CONTENT_ADMIN'], ['content:update']);
 
         $client = static::getClient();
-        $client->request('DELETE', self::ENDPOINT.'/'.$content->getId());
+        $client->request('DELETE', self::ENDPOINT . '/' . $content->getId());
 
         $this->assertSame(200, $client->getResponse()->getStatusCode());
     }
@@ -779,7 +779,7 @@ class ContentControllerTest extends WebTestCase
         $this->actAsUser('editor@example.com', ['CONTENT_ADMIN'], ['content:update']);
 
         $client = static::getClient();
-        $client->request('DELETE', self::ENDPOINT.'/'.$content->getId());
+        $client->request('DELETE', self::ENDPOINT . '/' . $content->getId());
 
         $this->assertSame(403, $client->getResponse()->getStatusCode());
 
@@ -804,14 +804,14 @@ class ContentControllerTest extends WebTestCase
         $this->actAsUser('admin@example.com', ['ROLE_GROUP_ADMIN'], []);
 
         $client = static::getClient();
-        $client->request('DELETE', self::ENDPOINT.'/'.$content->getId());
+        $client->request('DELETE', self::ENDPOINT . '/' . $content->getId());
 
         $this->assertSame(200, $client->getResponse()->getStatusCode());
     }
 
     private function insertFakeEmbedding(string $contentId): void
     {
-        $vector = '['.implode(',', array_fill(0, 1536, 0.001)).']';
+        $vector = '[' . implode(',', array_fill(0, 1536, 0.001)) . ']';
         $this->em->getConnection()->executeStatement(
             'INSERT INTO video_transcript_embeds (id, metadata, embedding) VALUES (:id, :metadata, :embedding)',
             ['id' => $contentId, 'metadata' => '{}', 'embedding' => $vector],

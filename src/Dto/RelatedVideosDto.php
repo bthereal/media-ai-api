@@ -18,7 +18,6 @@ final readonly class RelatedVideosDto
     public function __construct(
         #[OA\Property(type: 'boolean', example: true)]
         public bool $ok,
-
         #[OA\Property(type: 'array', items: new OA\Items(ref: new Model(type: ContentDto::class)), description: 'Semantically similar videos, nearest first — empty until the video has a completed, embedded transcript')]
         public array $items,
     ) {

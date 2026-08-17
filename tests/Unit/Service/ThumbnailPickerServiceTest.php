@@ -43,7 +43,7 @@ class ThumbnailPickerServiceTest extends TestCase
     {
         $files = [];
         for ($i = 0; $i < $count; ++$i) {
-            $path = tempnam(sys_get_temp_dir(), 'thumb_test_').'.jpg';
+            $path = tempnam(sys_get_temp_dir(), 'thumb_test_') . '.jpg';
             file_put_contents($path, 'fake-jpeg-bytes');
             $this->tmpFiles[] = $path;
             $files[] = $path;

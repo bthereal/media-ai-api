@@ -15,16 +15,12 @@ final readonly class PlaylistDto
     public function __construct(
         #[OA\Property(type: 'string', format: 'uuid')]
         public string $id,
-
         #[OA\Property(type: 'string')]
         public string $title,
-
         #[OA\Property(type: 'string', enum: ['private', 'public'])]
         public string $visibility,
-
         #[OA\Property(type: 'integer')]
         public int $itemCount,
-
         #[OA\Property(type: 'string', format: 'date-time')]
         public string $createdAt,
     ) {

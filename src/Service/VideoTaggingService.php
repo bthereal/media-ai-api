@@ -49,7 +49,7 @@ class VideoTaggingService
         $decoded = json_decode($cleaned, true);
 
         if (!is_array($decoded)) {
-            throw new \RuntimeException('video_tagger agent did not return a JSON object: '.$raw);
+            throw new \RuntimeException('video_tagger agent did not return a JSON object: ' . $raw);
         }
 
         $category = isset($decoded['category']) && is_string($decoded['category']) && '' !== trim($decoded['category'])

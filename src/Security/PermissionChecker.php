@@ -11,7 +11,8 @@ class PermissionChecker
     public function __construct(
         private readonly TenantContext $tenantContext,
         private readonly TokenStorageInterface $tokenStorage,
-    ) {}
+    ) {
+    }
 
     /**
      * Returns true if the current JWT has the given role AND permission,

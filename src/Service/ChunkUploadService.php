@@ -48,7 +48,7 @@ class ChunkUploadService
         }
 
         if (!$chunk->isValid()) {
-            throw new ValidationException('Chunk upload error: '.$chunk->getErrorMessage(), Response::HTTP_UNPROCESSABLE_ENTITY);
+            throw new ValidationException('Chunk upload error: ' . $chunk->getErrorMessage(), Response::HTTP_UNPROCESSABLE_ENTITY);
         }
 
         if ($chunk->getSize() > self::MAX_CHUNK_BYTES) {
@@ -69,7 +69,7 @@ class ChunkUploadService
         try {
             $this->filesystem->writeStream("temp/{$uploadId}/{$chunkIndex}", $stream);
         } catch (FilesystemException $e) {
-            throw new StorageException('Failed to store chunk: '.$e->getMessage(), previous: $e);
+            throw new StorageException('Failed to store chunk: ' . $e->getMessage(), previous: $e);
         } finally {
             if (is_resource($stream)) {
                 fclose($stream);
@@ -113,7 +113,7 @@ class ChunkUploadService
         } catch (MissingChunksException $e) {
             throw $e;
         } catch (FilesystemException $e) {
-            throw new StorageException('Failed to assemble upload: '.$e->getMessage(), previous: $e);
+            throw new StorageException('Failed to assemble upload: ' . $e->getMessage(), previous: $e);
         }
 
         return true;

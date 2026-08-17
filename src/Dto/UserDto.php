@@ -19,25 +19,18 @@ final readonly class UserDto
     public function __construct(
         #[OA\Property(type: 'string', format: 'uuid')]
         public string $id,
-
         #[OA\Property(type: 'string', format: 'email')]
         public string $email,
-
         #[OA\Property(type: 'string')]
         public string $firstName,
-
         #[OA\Property(type: 'string')]
         public string $lastName,
-
         #[OA\Property(type: 'array', items: new OA\Items(type: 'string'))]
         public array $roles,
-
         #[OA\Property(type: 'array', items: new OA\Items(type: 'string'))]
         public array $permissions,
-
         #[OA\Property(type: 'string', format: 'date-time', nullable: true, description: 'Set when the user has been deactivated; null if active')]
         public ?string $deactivatedAt,
-
         #[OA\Property(type: 'string', format: 'date-time')]
         public string $createdAt,
     ) {

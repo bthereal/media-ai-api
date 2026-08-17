@@ -14,10 +14,8 @@ final readonly class ChapterDto
     public function __construct(
         #[OA\Property(type: 'string', example: 'Intro')]
         public string $title,
-
         #[OA\Property(type: 'number', format: 'float')]
         public float $startSeconds,
-
         #[OA\Property(type: 'number', format: 'float')]
         public float $endSeconds,
     ) {

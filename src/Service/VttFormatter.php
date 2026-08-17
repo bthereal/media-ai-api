@@ -40,7 +40,7 @@ final class VttFormatter
         // Round to a single integer millisecond count first, then decompose via
         // integer div/mod — avoids float modulo (deprecated) and cascades rollover
         // (e.g. 59.9996s -> 1:00.000, not 0:59.9996 truncated to 60 "seconds").
-        $totalMillis = (int) round(max(0.0, $seconds) * 1000);
+        $totalMillis = (int) round(max(0.0, $seconds) * 1000.0);
 
         $hours = intdiv($totalMillis, 3_600_000);
         $totalMillis %= 3_600_000;

@@ -18,7 +18,6 @@ final readonly class PlaylistListDto
     public function __construct(
         #[OA\Property(type: 'boolean', example: true)]
         public bool $ok,
-
         #[OA\Property(type: 'array', items: new OA\Items(ref: new Model(type: PlaylistDto::class)))]
         public array $items,
     ) {

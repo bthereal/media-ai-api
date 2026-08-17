@@ -341,7 +341,7 @@ class ContentController extends AbstractController
             );
         }
 
-        $filePath = $this->projectDir.'/var/uploads/'.$content->getUploadId().'/'.$content->getFilename();
+        $filePath = $this->projectDir . '/var/uploads/' . $content->getUploadId() . '/' . $content->getFilename();
 
         if (!is_file($filePath)) {
             return $this->json(
@@ -377,7 +377,7 @@ class ContentController extends AbstractController
         if (!$this->permissionChecker->hasPermission('content:read')) {
             return $this->json(['ok' => false, 'error' => 'Forbidden. Requires content:read permission.'], Response::HTTP_FORBIDDEN);
         }
-        
+
         $content = $this->contentRepository->find($id);
 
         if ($content === null || !$content->hasThumbnail()) {
@@ -573,7 +573,7 @@ class ContentController extends AbstractController
 
         if (!in_array($eventType, WatchEvent::EVENT_TYPES, true)) {
             return $this->json(
-                ['ok' => false, 'error' => 'eventType must be one of: '.implode(', ', WatchEvent::EVENT_TYPES).'.'],
+                ['ok' => false, 'error' => 'eventType must be one of: ' . implode(', ', WatchEvent::EVENT_TYPES) . '.'],
                 Response::HTTP_UNPROCESSABLE_ENTITY,
             );
         }

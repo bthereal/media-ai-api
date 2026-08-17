@@ -55,13 +55,13 @@ class VideoAnalyticsService
         $completed = $this->watchEventRepository->countCompletedViewers($contentId);
 
         $totalWatchTimeSeconds = array_sum($progressCounts) * self::HEARTBEAT_INTERVAL_SECONDS;
-        $averageDropOffSeconds = array_sum($maxPositions) / count($maxPositions);
+        $averageDropOffSeconds = array_sum($maxPositions) / (float) count($maxPositions);
 
         return new VideoAnalyticsDto(
             ok: true,
             contentId: (string) $contentId,
             views: $views,
-            completionRate: $completed / $views * 100,
+            completionRate: (float) $completed / (float) $views * 100.0,
             totalWatchTimeSeconds: $totalWatchTimeSeconds,
             averageWatchTimeSeconds: $totalWatchTimeSeconds / $views,
             averageDropOffSeconds: $averageDropOffSeconds,
@@ -107,7 +107,7 @@ class VideoAnalyticsService
             totalVideos: count($items),
             totalViews: $totalViews,
             totalWatchTimeSeconds: $totalWatchTimeSeconds,
-            averageCompletionRate: $videosWithViews > 0 ? $completionRateSum / $videosWithViews : 0.0,
+            averageCompletionRate: $videosWithViews > 0 ? $completionRateSum / (float) $videosWithViews : 0.0,
             videos: $summaries,
         );
     }
@@ -132,7 +132,7 @@ class VideoAnalyticsService
         }
 
         $duration = $content->getDuration();
-        if (null !== $duration && $position >= $duration - self::RESUME_END_BUFFER_SECONDS) {
+        if (null !== $duration && $position >= $duration - (float) self::RESUME_END_BUFFER_SECONDS) {
             return null;
         }
 
@@ -152,14 +152,14 @@ class VideoAnalyticsService
 
         $curve = [];
         for ($percent = 0; $percent <= 100; $percent += self::RETENTION_BUCKET_STEP_PERCENT) {
-            $threshold = $duration * $percent / 100;
+            $threshold = $duration * (float) $percent / 100.0;
             $remaining = 0;
             foreach ($maxPositions as $maxPosition) {
                 if ($maxPosition >= $threshold) {
                     ++$remaining;
                 }
             }
-            $curve[] = new RetentionPointDto(percent: $percent, retentionRate: $remaining / $views * 100);
+            $curve[] = new RetentionPointDto(percent: $percent, retentionRate: (float) $remaining / (float) $views * 100.0);
         }
 
         return $curve;

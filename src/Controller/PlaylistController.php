@@ -89,7 +89,7 @@ class PlaylistController extends AbstractController
         }
 
         if (!in_array($visibility, Playlist::VISIBILITIES, true)) {
-            return $this->json(['ok' => false, 'error' => 'visibility must be one of: '.implode(', ', Playlist::VISIBILITIES).'.'], Response::HTTP_UNPROCESSABLE_ENTITY);
+            return $this->json(['ok' => false, 'error' => 'visibility must be one of: ' . implode(', ', Playlist::VISIBILITIES) . '.'], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
 
         $playlist = new Playlist($this->resolveOwnerId(), $title, $visibility);
@@ -187,7 +187,7 @@ class PlaylistController extends AbstractController
         if (array_key_exists('visibility', $body)) {
             $visibility = (string) $body['visibility'];
             if (!in_array($visibility, Playlist::VISIBILITIES, true)) {
-                return $this->json(['ok' => false, 'error' => 'visibility must be one of: '.implode(', ', Playlist::VISIBILITIES).'.'], Response::HTTP_UNPROCESSABLE_ENTITY);
+                return $this->json(['ok' => false, 'error' => 'visibility must be one of: ' . implode(', ', Playlist::VISIBILITIES) . '.'], Response::HTTP_UNPROCESSABLE_ENTITY);
             }
             $playlist->setVisibility($visibility);
         }

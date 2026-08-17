@@ -28,7 +28,8 @@ class AuthController extends AbstractController
         private readonly UserPasswordHasherInterface $passwordHasher,
         private readonly EntityManagerInterface $entityManager,
         private readonly TenantContext $tenantContext,
-    ) {}
+    ) {
+    }
 
     /**
      * POST /api/auth/token
@@ -219,7 +220,8 @@ class AuthController extends AbstractController
             return $this->json(['error' => 'not_found', 'message' => 'User not found.'], Response::HTTP_NOT_FOUND);
         }
 
-        if ((string) $user->getId() === (string) $this->getUser()?->getId()) {
+        $currentUser = $this->getUser();
+        if ($currentUser instanceof User && (string) $user->getId() === (string) $currentUser->getId()) {
             return $this->json(
                 ['error' => 'cannot_deactivate_self', 'message' => 'You cannot deactivate your own account.'],
                 Response::HTTP_UNPROCESSABLE_ENTITY,

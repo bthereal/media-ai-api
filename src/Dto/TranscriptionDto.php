@@ -17,16 +17,12 @@ final readonly class TranscriptionDto
     public function __construct(
         #[OA\Property(type: 'string', enum: ['pending', 'processing', 'completed', 'failed'])]
         public string $status,
-
         #[OA\Property(type: 'string', nullable: true, description: 'Transcribed text — null until status is completed')]
         public ?string $text,
-
         #[OA\Property(type: 'string', nullable: true, description: 'AI-generated ≤200-char summary — null until embedding step completes')]
         public ?string $summary,
-
         #[OA\Property(type: 'string', format: 'date-time', nullable: true)]
         public ?string $completedAt,
-
         #[OA\Property(
             type: 'array',
             items: new OA\Items(ref: new Model(type: ChapterDto::class)),
@@ -34,13 +30,10 @@ final readonly class TranscriptionDto
             description: 'AI-generated chapters — null until the post-transcription chapter step has run, empty if it ran but produced none',
         )]
         public ?array $chapters,
-
         #[OA\Property(ref: new Model(type: CaptionsInfoDto::class), nullable: true, description: 'Null until transcription has completed with timed segments')]
         public ?CaptionsInfoDto $captions,
-
         #[OA\Property(type: 'array', items: new OA\Items(type: 'string'), nullable: true, description: 'AI-extracted topic tags — null until the post-transcription tagging step has run, empty if it ran but produced none')]
         public ?array $tags,
-
         #[OA\Property(type: 'string', nullable: true, description: 'AI-assigned category (e.g. "Product Demo") — null until tagged')]
         public ?string $category,
     ) {

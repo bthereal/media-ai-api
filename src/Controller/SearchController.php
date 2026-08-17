@@ -79,7 +79,7 @@ class SearchController extends AbstractController
         return $this->json([
             'ok' => true,
             'answer' => $result->getContent(),
-            'videos' => array_values($videos),
+            'videos' => $videos,
         ]);
     }
 }

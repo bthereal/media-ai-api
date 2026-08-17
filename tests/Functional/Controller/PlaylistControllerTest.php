@@ -41,7 +41,7 @@ class PlaylistControllerTest extends WebTestCase
     {
         $content = new Content(
             filename: $filename,
-            uploadId: '550e8400-e29b-41d4-a716-'.substr(str_pad($hashSeed, 12, '0', \STR_PAD_LEFT), -12),
+            uploadId: '550e8400-e29b-41d4-a716-' . substr(str_pad($hashSeed, 12, '0', \STR_PAD_LEFT), -12),
             mimeType: 'video/mp4',
             fileSize: 1024,
             fileHash: str_pad($hashSeed, 64, '0', \STR_PAD_LEFT),
@@ -57,7 +57,9 @@ class PlaylistControllerTest extends WebTestCase
         static::getClient()->request(
             $method,
             $uri,
-            [], [], ['CONTENT_TYPE' => 'application/json'],
+            [],
+            [],
+            ['CONTENT_TYPE' => 'application/json'],
             [] === $body ? null : json_encode($body),
         );
     }
@@ -106,7 +108,7 @@ class PlaylistControllerTest extends WebTestCase
 
     public function testGetReturns404ForUnknownId(): void
     {
-        static::getClient()->request('GET', self::ENDPOINT.'/550e8400-e29b-41d4-a716-446655440000');
+        static::getClient()->request('GET', self::ENDPOINT . '/550e8400-e29b-41d4-a716-446655440000');
 
         $this->assertSame(404, static::getClient()->getResponse()->getStatusCode());
     }
@@ -117,7 +119,7 @@ class PlaylistControllerTest extends WebTestCase
         $this->em->persist($playlist);
         $this->em->flush();
 
-        static::getClient()->request('GET', self::ENDPOINT.'/'.(string) $playlist->getId());
+        static::getClient()->request('GET', self::ENDPOINT . '/' . (string) $playlist->getId());
 
         $this->assertSame(403, static::getClient()->getResponse()->getStatusCode());
     }
@@ -128,7 +130,7 @@ class PlaylistControllerTest extends WebTestCase
         $this->em->persist($playlist);
         $this->em->flush();
 
-        static::getClient()->request('GET', self::ENDPOINT.'/'.(string) $playlist->getId());
+        static::getClient()->request('GET', self::ENDPOINT . '/' . (string) $playlist->getId());
 
         $this->assertSame(200, static::getClient()->getResponse()->getStatusCode());
     }
@@ -139,7 +141,7 @@ class PlaylistControllerTest extends WebTestCase
         $this->em->persist($playlist);
         $this->em->flush();
 
-        $this->jsonRequest('PATCH', self::ENDPOINT.'/'.(string) $playlist->getId(), ['title' => 'Hijacked']);
+        $this->jsonRequest('PATCH', self::ENDPOINT . '/' . (string) $playlist->getId(), ['title' => 'Hijacked']);
 
         $this->assertSame(403, static::getClient()->getResponse()->getStatusCode());
     }
@@ -150,7 +152,7 @@ class PlaylistControllerTest extends WebTestCase
         $this->em->persist($playlist);
         $this->em->flush();
 
-        $this->jsonRequest('PATCH', self::ENDPOINT.'/'.(string) $playlist->getId(), ['title' => 'Renamed', 'visibility' => 'public']);
+        $this->jsonRequest('PATCH', self::ENDPOINT . '/' . (string) $playlist->getId(), ['title' => 'Renamed', 'visibility' => 'public']);
 
         $body = json_decode(static::getClient()->getResponse()->getContent(), true);
         $this->assertSame(200, static::getClient()->getResponse()->getStatusCode());
@@ -164,7 +166,7 @@ class PlaylistControllerTest extends WebTestCase
         $this->em->persist($playlist);
         $this->em->flush();
 
-        static::getClient()->request('DELETE', self::ENDPOINT.'/'.(string) $playlist->getId());
+        static::getClient()->request('DELETE', self::ENDPOINT . '/' . (string) $playlist->getId());
 
         $this->assertSame(403, static::getClient()->getResponse()->getStatusCode());
     }
@@ -176,10 +178,10 @@ class PlaylistControllerTest extends WebTestCase
         $this->em->flush();
         $id = (string) $playlist->getId();
 
-        static::getClient()->request('DELETE', self::ENDPOINT.'/'.$id);
+        static::getClient()->request('DELETE', self::ENDPOINT . '/' . $id);
         $this->assertSame(200, static::getClient()->getResponse()->getStatusCode());
 
-        static::getClient()->request('GET', self::ENDPOINT.'/'.$id);
+        static::getClient()->request('GET', self::ENDPOINT . '/' . $id);
         $this->assertSame(404, static::getClient()->getResponse()->getStatusCode());
     }
 
@@ -192,10 +194,10 @@ class PlaylistControllerTest extends WebTestCase
         $first = $this->makeContent('1');
         $second = $this->makeContent('2');
 
-        $this->jsonRequest('POST', self::ENDPOINT.'/'.(string) $playlist->getId().'/items', ['contentId' => (string) $first->getId()]);
+        $this->jsonRequest('POST', self::ENDPOINT . '/' . (string) $playlist->getId() . '/items', ['contentId' => (string) $first->getId()]);
         $this->assertSame(201, static::getClient()->getResponse()->getStatusCode());
 
-        $this->jsonRequest('POST', self::ENDPOINT.'/'.(string) $playlist->getId().'/items', ['contentId' => (string) $second->getId()]);
+        $this->jsonRequest('POST', self::ENDPOINT . '/' . (string) $playlist->getId() . '/items', ['contentId' => (string) $second->getId()]);
         $body = json_decode(static::getClient()->getResponse()->getContent(), true);
 
         $this->assertCount(2, $body['items']);
@@ -210,7 +212,7 @@ class PlaylistControllerTest extends WebTestCase
         $this->em->persist($playlist);
         $this->em->flush();
 
-        $this->jsonRequest('POST', self::ENDPOINT.'/'.(string) $playlist->getId().'/items', ['contentId' => '550e8400-e29b-41d4-a716-446655440000']);
+        $this->jsonRequest('POST', self::ENDPOINT . '/' . (string) $playlist->getId() . '/items', ['contentId' => '550e8400-e29b-41d4-a716-446655440000']);
 
         $this->assertSame(404, static::getClient()->getResponse()->getStatusCode());
     }
@@ -222,10 +224,10 @@ class PlaylistControllerTest extends WebTestCase
         $this->em->persist($playlist);
         $this->em->flush();
 
-        $this->jsonRequest('POST', self::ENDPOINT.'/'.(string) $playlist->getId().'/items', ['contentId' => (string) $content->getId()]);
+        $this->jsonRequest('POST', self::ENDPOINT . '/' . (string) $playlist->getId() . '/items', ['contentId' => (string) $content->getId()]);
         $this->assertSame(201, static::getClient()->getResponse()->getStatusCode());
 
-        $this->jsonRequest('POST', self::ENDPOINT.'/'.(string) $playlist->getId().'/items', ['contentId' => (string) $content->getId()]);
+        $this->jsonRequest('POST', self::ENDPOINT . '/' . (string) $playlist->getId() . '/items', ['contentId' => (string) $content->getId()]);
         $this->assertSame(422, static::getClient()->getResponse()->getStatusCode());
     }
 
@@ -238,13 +240,13 @@ class PlaylistControllerTest extends WebTestCase
         $contents = [$this->makeContent('1'), $this->makeContent('2'), $this->makeContent('3')];
         $itemIds = [];
         foreach ($contents as $content) {
-            $this->jsonRequest('POST', self::ENDPOINT.'/'.(string) $playlist->getId().'/items', ['contentId' => (string) $content->getId()]);
+            $this->jsonRequest('POST', self::ENDPOINT . '/' . (string) $playlist->getId() . '/items', ['contentId' => (string) $content->getId()]);
             $body = json_decode(static::getClient()->getResponse()->getContent(), true);
             $itemIds[] = end($body['items'])['id'];
         }
 
         // Remove the middle item
-        static::getClient()->request('DELETE', self::ENDPOINT.'/'.(string) $playlist->getId().'/items/'.$itemIds[1]);
+        static::getClient()->request('DELETE', self::ENDPOINT . '/' . (string) $playlist->getId() . '/items/' . $itemIds[1]);
         $body = json_decode(static::getClient()->getResponse()->getContent(), true);
 
         $this->assertSame(200, static::getClient()->getResponse()->getStatusCode());
@@ -261,7 +263,7 @@ class PlaylistControllerTest extends WebTestCase
         $this->em->persist($playlist);
         $this->em->flush();
 
-        static::getClient()->request('DELETE', self::ENDPOINT.'/'.(string) $playlist->getId().'/items/550e8400-e29b-41d4-a716-446655440000');
+        static::getClient()->request('DELETE', self::ENDPOINT . '/' . (string) $playlist->getId() . '/items/550e8400-e29b-41d4-a716-446655440000');
 
         $this->assertSame(404, static::getClient()->getResponse()->getStatusCode());
     }
@@ -274,13 +276,13 @@ class PlaylistControllerTest extends WebTestCase
 
         $itemIds = [];
         foreach ([$this->makeContent('1'), $this->makeContent('2'), $this->makeContent('3')] as $content) {
-            $this->jsonRequest('POST', self::ENDPOINT.'/'.(string) $playlist->getId().'/items', ['contentId' => (string) $content->getId()]);
+            $this->jsonRequest('POST', self::ENDPOINT . '/' . (string) $playlist->getId() . '/items', ['contentId' => (string) $content->getId()]);
             $body = json_decode(static::getClient()->getResponse()->getContent(), true);
             $itemIds[] = end($body['items'])['id'];
         }
 
         $reversed = array_reverse($itemIds);
-        $this->jsonRequest('PATCH', self::ENDPOINT.'/'.(string) $playlist->getId().'/items', ['itemIds' => $reversed]);
+        $this->jsonRequest('PATCH', self::ENDPOINT . '/' . (string) $playlist->getId() . '/items', ['itemIds' => $reversed]);
 
         $this->assertSame(200, static::getClient()->getResponse()->getStatusCode());
         $body = json_decode(static::getClient()->getResponse()->getContent(), true);
@@ -294,9 +296,9 @@ class PlaylistControllerTest extends WebTestCase
         $content = $this->makeContent('1');
         $this->em->persist($playlist);
         $this->em->flush();
-        $this->jsonRequest('POST', self::ENDPOINT.'/'.(string) $playlist->getId().'/items', ['contentId' => (string) $content->getId()]);
+        $this->jsonRequest('POST', self::ENDPOINT . '/' . (string) $playlist->getId() . '/items', ['contentId' => (string) $content->getId()]);
 
-        $this->jsonRequest('PATCH', self::ENDPOINT.'/'.(string) $playlist->getId().'/items', ['itemIds' => ['550e8400-e29b-41d4-a716-446655440000']]);
+        $this->jsonRequest('PATCH', self::ENDPOINT . '/' . (string) $playlist->getId() . '/items', ['itemIds' => ['550e8400-e29b-41d4-a716-446655440000']]);
 
         $this->assertSame(422, static::getClient()->getResponse()->getStatusCode());
     }

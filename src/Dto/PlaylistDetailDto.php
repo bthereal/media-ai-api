@@ -19,19 +19,14 @@ final readonly class PlaylistDetailDto
     public function __construct(
         #[OA\Property(type: 'boolean', example: true)]
         public bool $ok,
-
         #[OA\Property(type: 'string', format: 'uuid')]
         public string $id,
-
         #[OA\Property(type: 'string')]
         public string $title,
-
         #[OA\Property(type: 'string', enum: ['private', 'public'])]
         public string $visibility,
-
         #[OA\Property(type: 'string', format: 'date-time')]
         public string $createdAt,
-
         #[OA\Property(type: 'array', items: new OA\Items(ref: new Model(type: PlaylistItemDto::class)))]
         public array $items,
     ) {
