@@ -180,25 +180,125 @@ class AuthController extends AbstractController
     }
 
     /**
-     * GET /api/auth/users/{id} — requires ROLE_GROUP_ADMIN
+     * GET /api/auth/users/{id} — requires ROLE_GROUP_ADMIN, or the caller viewing their own record
      */
     #[Route('/users/{id}', name: 'api_auth_user_get', methods: ['GET'])]
     public function userGet(string $id): JsonResponse
     {
-        if (!in_array('ROLE_GROUP_ADMIN', $this->tenantContext->getRoles(), true)) {
-            return $this->json(
-                ['error' => 'forbidden', 'message' => 'Only admins can view users.'],
-                Response::HTTP_FORBIDDEN,
-            );
-        }
-
         $user = $this->userRepository->find($id);
 
         if (null === $user) {
             return $this->json(['error' => 'not_found', 'message' => 'User not found.'], Response::HTTP_NOT_FOUND);
         }
 
+        if (!$this->isAdminOrSelf($user)) {
+            return $this->json(
+                ['error' => 'forbidden', 'message' => 'You can only view your own account.'],
+                Response::HTTP_FORBIDDEN,
+            );
+        }
+
         return $this->json(UserDto::fromEntity($user));
+    }
+
+    /**
+     * PATCH /api/auth/users/{id} — requires ROLE_GROUP_ADMIN, or the caller updating their own record.
+     * Only admins may change the `role` field, including on their own record.
+     * Body: { "email": "...", "firstName": "...", "lastName": "...", "password"?: "...", "role"?: "admin"|"editor" }
+     */
+    #[Route('/users/{id}', name: 'api_auth_user_update', methods: ['PATCH'])]
+    public function userUpdate(string $id, Request $request): JsonResponse
+    {
+        $user = $this->userRepository->find($id);
+
+        if (null === $user) {
+            return $this->json(['error' => 'not_found', 'message' => 'User not found.'], Response::HTTP_NOT_FOUND);
+        }
+
+        $isAdmin = in_array('ROLE_GROUP_ADMIN', $this->tenantContext->getRoles(), true);
+
+        if (!$isAdmin && !$this->isAdminOrSelf($user)) {
+            return $this->json(
+                ['error' => 'forbidden', 'message' => 'You can only update your own account.'],
+                Response::HTTP_FORBIDDEN,
+            );
+        }
+
+        $data = json_decode($request->getContent(), true) ?? [];
+        $email = trim((string) ($data['email'] ?? ''));
+        $firstName = trim((string) ($data['firstName'] ?? ''));
+        $lastName = trim((string) ($data['lastName'] ?? ''));
+        $password = (string) ($data['password'] ?? '');
+
+        $errors = [];
+        if ($email === '' || !filter_var($email, \FILTER_VALIDATE_EMAIL)) {
+            $errors['email'] = 'A valid email address is required.';
+        }
+        if ($firstName === '') {
+            $errors['firstName'] = 'First name is required.';
+        }
+        if ($lastName === '') {
+            $errors['lastName'] = 'Last name is required.';
+        }
+        if ($password !== '' && strlen($password) < 8) {
+            $errors['password'] = 'Password must be at least 8 characters.';
+        }
+
+        if (array_key_exists('role', $data)) {
+            if (!$isAdmin) {
+                return $this->json(
+                    ['error' => 'forbidden', 'message' => 'Only admins can change roles.'],
+                    Response::HTTP_FORBIDDEN,
+                );
+            }
+            if (!RoleCatalog::isValid((string) $data['role'])) {
+                $errors['role'] = 'A valid role is required.';
+            }
+        }
+
+        if ($errors !== []) {
+            return $this->json(
+                ['error' => 'validation_failed', 'errors' => $errors],
+                Response::HTTP_UNPROCESSABLE_ENTITY,
+            );
+        }
+
+        $existing = $this->userRepository->findActiveByEmail($email);
+        if ($existing !== null && (string) $existing->getId() !== (string) $user->getId()) {
+            return $this->json(
+                ['error' => 'email_taken', 'message' => 'That email address is already in use.'],
+                Response::HTTP_CONFLICT,
+            );
+        }
+
+        $user->setEmail($email);
+        $user->setFirstName($firstName);
+        $user->setLastName($lastName);
+
+        if ($password !== '') {
+            $user->setPassword($this->passwordHasher->hashPassword($user, $password));
+        }
+
+        if ($isAdmin && array_key_exists('role', $data)) {
+            $resolved = RoleCatalog::resolve((string) $data['role']);
+            $user->setTenantRoles($resolved['roles']);
+            $user->setPermissions($resolved['permissions']);
+        }
+
+        $this->entityManager->flush();
+
+        return $this->json(UserDto::fromEntity($user));
+    }
+
+    private function isAdminOrSelf(User $target): bool
+    {
+        if (in_array('ROLE_GROUP_ADMIN', $this->tenantContext->getRoles(), true)) {
+            return true;
+        }
+
+        $currentUser = $this->getUser();
+
+        return $currentUser instanceof User && (string) $currentUser->getId() === (string) $target->getId();
     }
 
     /**

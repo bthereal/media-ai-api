@@ -12,6 +12,29 @@ use Symfony\Component\DependencyInjection\Attribute\Autowire;
 
 class CaptionTranslationService
 {
+    /**
+     * Segments per translation call. Long videos can have hundreds of Whisper
+     * segments; asking the model to preserve an exact 1:1 array length across all
+     * of them in one shot is where it reliably starts merging/splitting/dropping
+     * lines (observed: JSON responses with the wrong element count on ~10+ minute
+     * videos). Batching keeps each call's array small enough that the model holds
+     * the line count exactly, and caps the blast radius of a single bad batch.
+     *
+     * Batches run sequentially — a ~300-segment video is ~15 batches, tens of
+     * seconds total. That's fine for the background job that calls this (see
+     * TranslateCaptionsHandler); it's NOT fine for a synchronous HTTP response,
+     * which is exactly why this service is invoked from a message handler rather
+     * than inline in the request that serves a .vtt file.
+     *
+     * Kept fairly small (not just "big enough to cut round-trips") because
+     * Whisper segments are often short, comma-fragmented mid-sentence clauses —
+     * the model tends to merge two adjacent short fragments into one fluent
+     * translated line, which is exactly what breaks the 1:1 count requirement.
+     * A smaller array gives it less opportunity to do that per call, and
+     * Messenger's retry (see TranslateCaptionsHandler) resamples on failure.
+     */
+    private const int BATCH_SIZE = 20;
+
     public function __construct(
         #[Autowire(service: 'ai.agent.video_translator')]
         private readonly AgentInterface $translatorAgent,
@@ -19,8 +42,8 @@ class CaptionTranslationService
     }
 
     /**
-     * Translates segment text into the target language in a single call, preserving
-     * each segment's original start/end timing.
+     * Translates segment text into the target language, preserving each segment's
+     * original start/end timing. Internally batched — see BATCH_SIZE.
      *
      * @param list<array{start: float, end: float, text: string}> $segments
      *
@@ -33,8 +56,31 @@ class CaptionTranslationService
         }
 
         $targetLanguageLabel = CaptionLanguages::labelFor($targetLangCode);
-        $lines = array_map(static fn (array $segment): string => $segment['text'], $segments);
 
+        $translated = [];
+        foreach (array_chunk($segments, self::BATCH_SIZE) as $batch) {
+            $lines = array_map(static fn (array $segment): string => $segment['text'], $batch);
+            $translatedLines = $this->translateBatch($lines, $targetLanguageLabel);
+
+            foreach ($batch as $index => $segment) {
+                $translated[] = [
+                    'start' => $segment['start'],
+                    'end' => $segment['end'],
+                    'text' => $translatedLines[$index],
+                ];
+            }
+        }
+
+        return $translated;
+    }
+
+    /**
+     * @param list<string> $lines
+     *
+     * @return list<string>
+     */
+    private function translateBatch(array $lines, string $targetLanguageLabel): array
+    {
         $prompt = sprintf(
             "Target language: %s\n\n%s",
             $targetLanguageLabel,
@@ -44,18 +90,7 @@ class CaptionTranslationService
         $result = $this->translatorAgent->call(new MessageBag(Message::ofUser($prompt)));
         assert($result instanceof TextResult);
 
-        $translatedLines = $this->parseTranslatedLines($result->getContent(), count($segments));
-
-        $translated = [];
-        foreach ($segments as $index => $segment) {
-            $translated[] = [
-                'start' => $segment['start'],
-                'end' => $segment['end'],
-                'text' => $translatedLines[$index],
-            ];
-        }
-
-        return $translated;
+        return $this->parseTranslatedLines($result->getContent(), count($lines));
     }
 
     /**

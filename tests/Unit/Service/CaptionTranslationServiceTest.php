@@ -90,4 +90,27 @@ class CaptionTranslationServiceTest extends TestCase
 
         $this->service->translate(self::SEGMENTS, 'es');
     }
+
+    public function testTranslateBatchesLargeSegmentLists(): void
+    {
+        $segments = array_map(
+            static fn (int $i): array => ['start' => (float) $i, 'end' => (float) $i + 1, 'text' => "Line {$i}"],
+            range(0, 79), // 80 segments = 4 batches of 20
+        );
+
+        $this->agent
+            ->expects($this->exactly(4))
+            ->method('call')
+            ->willReturnCallback(function (MessageBag $messages) {
+                $payload = json_decode(explode("\n\n", $messages->getUserMessage()->asText())[1], true);
+
+                return new TextResult(json_encode(array_map(static fn (string $line): string => "translated:{$line}", $payload)));
+            });
+
+        $result = $this->service->translate($segments, 'es');
+
+        $this->assertCount(80, $result);
+        $this->assertSame('translated:Line 0', $result[0]['text']);
+        $this->assertSame('translated:Line 79', $result[79]['text']);
+    }
 }

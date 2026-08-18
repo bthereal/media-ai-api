@@ -7,7 +7,7 @@ namespace App\Dto;
 use OpenApi\Attributes as OA;
 
 #[OA\Schema(
-    required: ['contentId', 'title', 'filename', 'views', 'completionRate', 'watchTimeSeconds'],
+    required: ['contentId', 'title', 'filename', 'views', 'completionRate', 'watchTimeSeconds', 'category'],
 )]
 final readonly class VideoAnalyticsSummaryDto
 {
@@ -24,6 +24,8 @@ final readonly class VideoAnalyticsSummaryDto
         public float $completionRate,
         #[OA\Property(type: 'number', format: 'float', description: 'Sum of estimated watch time across all viewers, in seconds')]
         public float $watchTimeSeconds,
+        #[OA\Property(type: 'string', nullable: true, description: 'AI-assigned category (e.g. "Product Demo") — null until tagged')]
+        public ?string $category,
     ) {
     }
 }

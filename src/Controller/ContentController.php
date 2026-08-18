@@ -6,15 +6,15 @@ namespace App\Controller;
 
 use App\Dto\ContentDto;
 use App\Dto\ContentListDto;
-use App\Dto\LanguageOptionDto;
 use App\Dto\ProgressDto;
 use App\Dto\RelatedVideosDto;
 use App\Dto\VideoAnalyticsDto;
+use App\Entity\Content;
 use App\Entity\WatchEvent;
+use App\Message\TranslateCaptionsMessage;
 use App\Repository\ContentRepository;
 use App\Security\PermissionChecker;
 use App\Service\CaptionLanguages;
-use App\Service\CaptionTranslationService;
 use App\Service\ThumbnailGenerator;
 use App\Service\VideoAnalyticsService;
 use App\Service\VideoSummaryService;
@@ -31,6 +31,7 @@ use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpFoundation\ResponseHeaderBag;
+use Symfony\Component\Messenger\MessageBusInterface;
 use Symfony\Component\Routing\Attribute\Route;
 
 class ContentController extends AbstractController
@@ -43,40 +44,12 @@ class ContentController extends AbstractController
         private readonly VideoSummaryService $summaryService,
         private readonly VideoAnalyticsService $analyticsService,
         private readonly ThumbnailGenerator $thumbnailGenerator,
-        private readonly CaptionTranslationService $captionTranslationService,
+        private readonly MessageBusInterface $messageBus,
         #[Autowire(service: 'ai.retriever.video_transcript_embeds')]
         private readonly RetrieverInterface $retriever,
         #[Autowire('%kernel.project_dir%')]
         private readonly string $projectDir,
     ) {
-    }
-
-    #[Route('/api/caption-languages', name: 'api_caption_languages', methods: ['GET'])]
-    #[OA\Get(
-        path: '/api/caption-languages',
-        operationId: 'listCaptionLanguages',
-        summary: 'The curated set of languages offerable for caption generation, e.g. at upload time',
-        tags: ['Content'],
-        responses: [
-            new OA\Response(
-                response: 200,
-                description: 'Available caption languages',
-                content: new OA\JsonContent(type: 'array', items: new OA\Items(ref: new Model(type: LanguageOptionDto::class))),
-            ),
-        ],
-    )]
-    public function captionLanguages(): JsonResponse
-    {
-        if (!$this->permissionChecker->hasPermission('content:read')) {
-            return $this->json(['ok' => false, 'error' => 'Forbidden. Requires content:read permission.'], Response::HTTP_FORBIDDEN);
-        }
-
-        $languages = array_map(
-            static fn (string $code) => new LanguageOptionDto($code, CaptionLanguages::labelFor($code)),
-            CaptionLanguages::TRANSLATION_TARGETS,
-        );
-
-        return $this->json($languages);
     }
 
     #[Route('/api/content', name: 'api_content_list', methods: ['GET'])]
@@ -173,6 +146,23 @@ class ContentController extends AbstractController
         return $this->json(ContentDto::fromEntity($content));
     }
 
+    /**
+     * Editors may only mutate their own uploads; admins can mutate anything.
+     */
+    private function assertOwnerOrAdmin(Content $content, string $action): ?JsonResponse
+    {
+        if ($this->permissionChecker->isAdmin()) {
+            return null;
+        }
+
+        $viewerId = $this->getUser()?->getUserIdentifier() ?? 'anonymous';
+        if ($content->getOwnerId() !== $viewerId) {
+            return $this->json(['ok' => false, 'error' => "Forbidden. You can only {$action} your own videos."], Response::HTTP_FORBIDDEN);
+        }
+
+        return null;
+    }
+
     #[Route('/api/content/{id}', name: 'api_content_delete', methods: ['DELETE'])]
     #[OA\Delete(
         path: '/api/content/{id}',
@@ -199,12 +189,8 @@ class ContentController extends AbstractController
             return $this->json(['ok' => false, 'error' => 'Content not found.'], Response::HTTP_NOT_FOUND);
         }
 
-        // Editors may only delete their own uploads; admins can delete anything.
-        if (!$this->permissionChecker->isAdmin()) {
-            $viewerId = $this->getUser()?->getUserIdentifier() ?? 'anonymous';
-            if ($content->getOwnerId() !== $viewerId) {
-                return $this->json(['ok' => false, 'error' => 'Forbidden. You can only delete your own videos.'], Response::HTTP_FORBIDDEN);
-            }
+        if ($forbidden = $this->assertOwnerOrAdmin($content, 'delete')) {
+            return $forbidden;
         }
 
         $content->archive();
@@ -246,6 +232,10 @@ class ContentController extends AbstractController
         $content = $this->contentRepository->find($id);
         if (null === $content) {
             return $this->json(['ok' => false, 'error' => 'Content not found.'], Response::HTTP_NOT_FOUND);
+        }
+
+        if ($forbidden = $this->assertOwnerOrAdmin($content, 'update')) {
+            return $forbidden;
         }
 
         $body = json_decode($request->getContent(), true) ?? [];
@@ -296,6 +286,10 @@ class ContentController extends AbstractController
 
         if (null === $content || null !== $content->getDeletedAt()) {
             return $this->json(['ok' => false, 'error' => 'Content not found.'], Response::HTTP_NOT_FOUND);
+        }
+
+        if ($forbidden = $this->assertOwnerOrAdmin($content, 'update')) {
+            return $forbidden;
         }
 
         $transcription = $content->getTranscription();
@@ -423,6 +417,10 @@ class ContentController extends AbstractController
             return $this->json(['ok' => false, 'error' => 'Content not found.'], Response::HTTP_NOT_FOUND);
         }
 
+        if ($forbidden = $this->assertOwnerOrAdmin($content, 'update')) {
+            return $forbidden;
+        }
+
         $candidateCount = $this->thumbnailGenerator->generate($content->getUploadId(), $content->getFilename(), $content->getDuration());
 
         if (0 === $candidateCount) {
@@ -506,6 +504,10 @@ class ContentController extends AbstractController
 
         if (null === $content || null !== $content->getDeletedAt()) {
             return $this->json(['ok' => false, 'error' => 'Content not found.'], Response::HTTP_NOT_FOUND);
+        }
+
+        if ($forbidden = $this->assertOwnerOrAdmin($content, 'update')) {
+            return $forbidden;
         }
 
         $data = json_decode($request->getContent(), true) ?? [];
@@ -666,8 +668,8 @@ class ContentController extends AbstractController
         ],
         responses: [
             new OA\Response(response: 200, description: 'WebVTT captions file'),
+            new OA\Response(response: 202, description: 'Not translated yet — a background job was just dispatched to translate and cache it; retry shortly'),
             new OA\Response(response: 404, description: 'Content/transcription not found, or unsupported language'),
-            new OA\Response(response: 502, description: 'Translation failed'),
         ],
     )]
     public function captions(string $id, string $lang): Response
@@ -696,13 +698,17 @@ class ContentController extends AbstractController
             $segments = $transcription->getTranslation($lang);
 
             if (null === $segments) {
-                try {
-                    $segments = $this->captionTranslationService->translate($transcription->getSegments(), $lang);
-                } catch (\Throwable) {
-                    return new Response(null, Response::HTTP_BAD_GATEWAY);
-                }
-                $transcription->setTranslation($lang, $segments);
-                $this->entityManager->flush();
+                // Translation is slow (many sequential AI calls for a long
+                // transcript) — far too slow for a browser's <track> fetch to wait
+                // on inline. Dispatch it to the background instead and return
+                // immediately; the player's next attempt at this language (a
+                // reload, or toggling the track off/on) will find it cached. No
+                // explicit caching is set — Symfony's default "no-cache, private"
+                // applies, so a 202 is never treated as a permanent "no captions"
+                // answer by an intermediary cache.
+                $this->messageBus->dispatch(new TranslateCaptionsMessage($id, $lang));
+
+                return new Response(null, Response::HTTP_ACCEPTED);
             }
 
             $vtt = VttFormatter::format($segments);

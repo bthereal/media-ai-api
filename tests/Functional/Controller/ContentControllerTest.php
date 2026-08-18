@@ -489,17 +489,6 @@ class ContentControllerTest extends WebTestCase
         $this->assertSame(422, $client->getResponse()->getStatusCode());
     }
 
-    public function testCaptionLanguagesReturnsCuratedList(): void
-    {
-        $client = static::getClient();
-        $client->request('GET', '/api/caption-languages');
-
-        $this->assertSame(200, $client->getResponse()->getStatusCode());
-        $body = json_decode($client->getResponse()->getContent(), true);
-        $this->assertSame(['es', 'fr', 'de', 'ja', 'zh'], array_column($body, 'code'));
-        $this->assertSame('Spanish', $body[0]['label']);
-    }
-
     public function testCaptionsReturns404ForUnknownContent(): void
     {
         $client = static::getClient();
@@ -577,6 +566,64 @@ class ContentControllerTest extends WebTestCase
         $client->request('GET', self::ENDPOINT . '/' . (string) $content->getId() . '/captions/xx.vtt');
 
         $this->assertSame(404, $client->getResponse()->getStatusCode());
+    }
+
+    public function testCaptionsServesCachedTranslationAsWebVtt(): void
+    {
+        $transcription = new VideoTranscription('550e8400-e29b-41d4-a716-446655440000', 'video.mp4');
+        $transcription->markCompleted('Hello world.', [['start' => 0.0, 'end' => 5.0, 'text' => 'Hello world.']], 'english');
+        $transcription->setTranslation('es', [['start' => 0.0, 'end' => 5.0, 'text' => 'Hola mundo.']]);
+
+        $content = new Content(
+            filename: 'video.mp4',
+            uploadId: '550e8400-e29b-41d4-a716-446655440000',
+            mimeType: 'video/mp4',
+            fileSize: 1024,
+            fileHash: str_repeat('h', 64),
+        );
+        $content->setTranscription($transcription);
+        $this->em->persist($content);
+        $this->em->flush();
+
+        $client = static::getClient();
+        $client->request('GET', self::ENDPOINT . '/' . (string) $content->getId() . '/captions/es.vtt');
+
+        $response = $client->getResponse();
+        $this->assertSame(200, $response->getStatusCode());
+        $this->assertStringContainsString('Hola mundo.', $response->getContent());
+    }
+
+    public function testCaptionsDispatchesBackgroundTranslationAndReturns202WhenUncached(): void
+    {
+        $transcription = new VideoTranscription('550e8400-e29b-41d4-a716-446655440000', 'video.mp4');
+        $transcription->markCompleted('Hello world.', [['start' => 0.0, 'end' => 5.0, 'text' => 'Hello world.']], 'english');
+
+        $content = new Content(
+            filename: 'video.mp4',
+            uploadId: '550e8400-e29b-41d4-a716-446655440000',
+            mimeType: 'video/mp4',
+            fileSize: 1024,
+            fileHash: str_repeat('i', 64),
+        );
+        $content->setTranscription($transcription);
+        $this->em->persist($content);
+        $this->em->flush();
+
+        $client = static::getClient();
+        $client->request('GET', self::ENDPOINT . '/' . (string) $content->getId() . '/captions/es.vtt');
+
+        $response = $client->getResponse();
+        $this->assertSame(202, $response->getStatusCode());
+        $this->assertSame('', $response->getContent());
+        // Symfony's default (no explicit caching set) is "no-cache, private" —
+        // never treated as a cacheable "no captions" answer by an intermediary.
+        $this->assertStringContainsString('no-cache', (string) $response->headers->get('Cache-Control'));
+
+        // Still uncached — the actual translation happens in TranslateCaptionsHandler
+        // (unit-tested separately), not inline in this request.
+        $this->em->clear();
+        $reloaded = $this->em->getRepository(Content::class)->find($content->getId());
+        $this->assertNull($reloaded->getTranscription()->getTranslation('es'));
     }
 
     public function testRelatedReturns404ForUnknownContent(): void
