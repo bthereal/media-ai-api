@@ -6,7 +6,6 @@ namespace App\MessageHandler;
 
 use App\Entity\VideoTranscription;
 use App\Message\EmbedVideoSummaryMessage;
-use App\Message\GenerateCaptionsMessage;
 use App\Message\GenerateChaptersMessage;
 use App\Message\GenerateTagsMessage;
 use App\Message\TranscribeVideoMessage;
@@ -44,10 +43,13 @@ class TranscribeVideoHandler
         $record->markProcessing();
         $this->entityManager->flush();
 
+        $content = $this->contentRepository->findOneBy(['uploadId' => $message->uploadId]);
+
         try {
             $result = $this->transcriptionService->transcribe(
                 $message->uploadId,
                 $message->filename,
+                $content?->getDuration(),
             );
             $record->markCompleted($result['text'], $result['segments'], $result['language']);
         } catch (\Throwable $e) {
@@ -58,15 +60,10 @@ class TranscribeVideoHandler
 
         $this->entityManager->flush();
 
-        $content = $this->contentRepository->findOneBy(['uploadId' => $message->uploadId]);
         if (null !== $content) {
             $this->messageBus->dispatch(new EmbedVideoSummaryMessage((string) $content->getId()));
             $this->messageBus->dispatch(new GenerateChaptersMessage((string) $content->getId()));
             $this->messageBus->dispatch(new GenerateTagsMessage((string) $content->getId()));
-
-            if ([] !== $record->getRequestedCaptionLanguages()) {
-                $this->messageBus->dispatch(new GenerateCaptionsMessage((string) $content->getId()));
-            }
         }
     }
 }

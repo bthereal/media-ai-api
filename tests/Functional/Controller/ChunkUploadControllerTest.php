@@ -146,50 +146,6 @@ class ChunkUploadControllerTest extends WebTestCase
         $this->assertSame('anonymous', $content->getOwnerId());
     }
 
-    public function testFinalChunkOfNewUploadPersistsValidatedCaptionLanguages(): void
-    {
-        $client = static::getClient();
-        $uuid = '990e8400-e29b-41d4-a716-446655440007';
-        $this->assembledPath = "{$uuid}/video.mp4";
-
-        $client->request('POST', self::ENDPOINT, $this->validParams([
-            'uploadId' => $uuid,
-            'chunkIndex' => '0',
-            'totalChunks' => '1',
-            'captionLanguages' => json_encode(['es', 'fr', 'not-a-real-code']),
-        ]), ['chunk' => $this->makeUploadedFile()]);
-
-        $this->assertSame(200, $client->getResponse()->getStatusCode());
-        $body = json_decode($client->getResponse()->getContent(), true);
-        $this->assertTrue($body['ok']);
-
-        $this->em->clear();
-        $content = $this->em->getRepository(Content::class)->find($body['contentId']);
-        $this->assertNotNull($content);
-        // 'not-a-real-code' isn't in CaptionLanguages::TRANSLATION_TARGETS, so it's dropped silently.
-        $this->assertSame(['es', 'fr'], $content->getTranscription()->getRequestedCaptionLanguages());
-    }
-
-    public function testFinalChunkOfNewUploadDefaultsToNoRequestedCaptionLanguages(): void
-    {
-        $client = static::getClient();
-        $uuid = '990e8400-e29b-41d4-a716-446655440008';
-        $this->assembledPath = "{$uuid}/video.mp4";
-
-        $client->request('POST', self::ENDPOINT, $this->validParams([
-            'uploadId' => $uuid,
-            'chunkIndex' => '0',
-            'totalChunks' => '1',
-        ]), ['chunk' => $this->makeUploadedFile()]);
-
-        $this->assertSame(200, $client->getResponse()->getStatusCode());
-        $body = json_decode($client->getResponse()->getContent(), true);
-
-        $this->em->clear();
-        $content = $this->em->getRepository(Content::class)->find($body['contentId']);
-        $this->assertSame([], $content->getTranscription()->getRequestedCaptionLanguages());
-    }
-
     public function testFinalChunkOfArchivedDuplicateRevivesInsteadOfCreatingNewRow(): void
     {
         // The assembled file's bytes are just the single chunk's bytes verbatim,

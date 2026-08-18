@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Tests\Functional\Controller;
 
 use App\Entity\Content;
+use App\Entity\VideoTranscription;
 use App\Entity\WatchEvent;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
@@ -197,6 +198,23 @@ class AnalyticsControllerTest extends WebTestCase
         $this->assertSame(1, $body['videos'][0]['views']);
         $this->assertSame('unwatched.mp4', $body['videos'][1]['filename']);
         $this->assertSame(0, $body['videos'][1]['views']);
+        $this->assertNull($body['videos'][0]['category']);
+    }
+
+    public function testOverviewIncludesEachVideosCategory(): void
+    {
+        $content = $this->createContent('tagged.mp4', '8');
+        $transcription = new VideoTranscription($content->getUploadId(), $content->getFilename());
+        $transcription->setTagsAndCategory(['space'], 'Webinar');
+        $content->setTranscription($transcription);
+        $this->em->flush();
+
+        $client = static::getClient();
+        $client->request('GET', '/api/analytics/overview');
+
+        $body = json_decode($client->getResponse()->getContent(), true);
+
+        $this->assertSame('Webinar', $body['videos'][0]['category']);
     }
 
     public function testProgressReturns404ForUnknownContent(): void

@@ -97,6 +97,7 @@ class VideoAnalyticsService
                 views: $analytics->views,
                 completionRate: $analytics->completionRate,
                 watchTimeSeconds: $analytics->totalWatchTimeSeconds,
+                category: $content->getTranscription()?->getCategory(),
             );
         }
 

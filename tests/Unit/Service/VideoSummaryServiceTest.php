@@ -120,6 +120,50 @@ class VideoSummaryServiceTest extends TestCase
         $this->assertFalse($captured->getMetadata()->hasTitle());
     }
 
+    public function testEmbedAndStoreTruncatesTranscriptsThatExceedTheEmbeddingModelsContextWindow(): void
+    {
+        // ~40k chars is well beyond text-embedding-ada-002's 8192-token limit —
+        // roughly what a 50+ minute video's transcript looks like, and exactly
+        // what the API previously rejected outright with a context-length error.
+        $longTranscript = str_repeat('word ', 8_000);
+        $captured = null;
+
+        $this->vectorizer
+            ->method('vectorize')
+            ->willReturnCallback(function (TextDocument $doc) use (&$captured) {
+                $captured = $doc;
+
+                return $this->makeVectorDoc();
+            });
+
+        $this->store->method('add');
+
+        $this->service->embedAndStore('uuid', $longTranscript, 'Title');
+
+        $this->assertLessThan(mb_strlen($longTranscript), mb_strlen($captured->getContent()));
+        $this->assertLessThanOrEqual(28_000, mb_strlen($captured->getContent()));
+        $this->assertSame($captured->getContent(), $captured->getMetadata()->getText());
+    }
+
+    public function testEmbedAndStoreLeavesShortTranscriptsUntouched(): void
+    {
+        $captured = null;
+
+        $this->vectorizer
+            ->method('vectorize')
+            ->willReturnCallback(function (TextDocument $doc) use (&$captured) {
+                $captured = $doc;
+
+                return $this->makeVectorDoc();
+            });
+
+        $this->store->method('add');
+
+        $this->service->embedAndStore('uuid', 'A short transcript.', 'Title');
+
+        $this->assertSame('A short transcript.', $captured->getContent());
+    }
+
     public function testRemoveEmbeddingCallsStoreRemove(): void
     {
         $this->store

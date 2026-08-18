@@ -4,13 +4,12 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
-use App\Repository\ContentRepository;
 use App\Security\PermissionChecker;
+use App\Service\VideoSearchService;
 use Symfony\AI\Agent\AgentInterface;
 use Symfony\AI\Platform\Message\Message;
 use Symfony\AI\Platform\Message\MessageBag;
 use Symfony\AI\Platform\Result\TextResult;
-use Symfony\AI\Store\RetrieverInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -22,11 +21,9 @@ class SearchController extends AbstractController
 {
     public function __construct(
         private readonly PermissionChecker $permissionChecker,
-        private readonly ContentRepository $contentRepository,
+        private readonly VideoSearchService $videoSearchService,
         #[Autowire(service: 'ai.agent.video_search')]
         private readonly AgentInterface $searchAgent,
-        #[Autowire(service: 'ai.retriever.video_transcript_embeds')]
-        private readonly RetrieverInterface $retriever,
     ) {
     }
 
@@ -48,25 +45,13 @@ class SearchController extends AbstractController
             return $this->json(['ok' => false, 'error' => 'query must be 500 characters or fewer.'], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
 
-        $matched = iterator_to_array($this->retriever->retrieve($query, ['limit' => 5]));
-
         $videos = [];
-        foreach ($matched as $doc) {
-            $id = (string) $doc->getId();
-            $content = $this->contentRepository->find($id);
-
-            // Defense in depth: archived content's embeddings are removed when it's
-            // deleted, but skip defensively in case a stale entry ever slips through.
-            if (null === $content || null !== $content->getDeletedAt()) {
-                continue;
-            }
-
-            $metadata = $doc->getMetadata();
-
+        foreach ($this->videoSearchService->search($query) as $hit) {
+            $content = $hit['content'];
             $videos[] = [
-                'id' => $id,
+                'id' => (string) $content->getId(),
                 'title' => $content->getTitle() ?? $content->getFilename(),
-                'summary' => $metadata->hasText() ? $metadata->getText() : null,
+                'summary' => '' !== $hit['text'] ? $hit['text'] : null,
             ];
         }
 

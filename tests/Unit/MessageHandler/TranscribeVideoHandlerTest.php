@@ -63,10 +63,16 @@ class TranscribeVideoHandlerTest extends TestCase
 
         $this->repo->method('findOneBy')->willReturn($record);
 
+        $content = $this->createMock(Content::class);
+        $content->method('getId')->willReturn(Uuid::fromString('660e8400-e29b-41d4-a716-446655440001'));
+        $content->method('getDuration')->willReturn(300.0);
+
+        $this->contentRepo->method('findOneBy')->willReturn($content);
+
         $this->service
             ->expects($this->once())
             ->method('transcribe')
-            ->with(self::UPLOAD_ID, self::FILENAME)
+            ->with(self::UPLOAD_ID, self::FILENAME, 300.0)
             ->willReturn([
                 'text' => 'The transcribed text.',
                 'segments' => [['start' => 0.0, 'end' => 5.0, 'text' => 'The transcribed text.']],
@@ -74,11 +80,6 @@ class TranscribeVideoHandlerTest extends TestCase
             ]);
 
         $this->em->expects($this->exactly(2))->method('flush');
-
-        $content = $this->createMock(Content::class);
-        $content->method('getId')->willReturn(Uuid::fromString('660e8400-e29b-41d4-a716-446655440001'));
-
-        $this->contentRepo->method('findOneBy')->willReturn($content);
 
         $dispatchedMessages = [];
         $this->bus

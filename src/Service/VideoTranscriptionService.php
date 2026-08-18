@@ -27,12 +27,17 @@ class VideoTranscriptionService
      *
      * @throws TranscriptionException
      */
-    public function transcribe(string $uploadId, string $filename): array
+    public function transcribe(string $uploadId, string $filename, ?float $durationSeconds = null): array
     {
         $path = "{$uploadId}/{$filename}";
+        $tmpMp4 = tempnam(sys_get_temp_dir(), 'transcribe_');
 
         try {
-            $content = $this->filesystem->read($path);
+            $src = $this->filesystem->readStream($path);
+            $dest = fopen($tmpMp4, 'wb');
+            stream_copy_to_stream($src, $dest);
+            fclose($src);
+            fclose($dest);
         } catch (\Throwable $e) {
             throw new TranscriptionException(
                 "Failed to read file {$path}: " . $e->getMessage(),
@@ -40,14 +45,11 @@ class VideoTranscriptionService
             );
         }
 
-        $tmpMp4 = tempnam(sys_get_temp_dir(), 'transcribe_');
         $tmpAudio = null;
 
         try {
-            file_put_contents($tmpMp4, $content);
-
             // Extract audio-only track — Whisper's 25MB limit is easily exceeded by full MP4s
-            $tmpAudio = $this->audioExtractor->extractAudio($tmpMp4);
+            $tmpAudio = $this->audioExtractor->extractAudio($tmpMp4, $durationSeconds);
 
             $audio = Audio::fromFile($tmpAudio);
 

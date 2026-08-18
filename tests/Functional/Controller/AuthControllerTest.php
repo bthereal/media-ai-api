@@ -105,6 +105,19 @@ class AuthControllerTest extends WebTestCase
         $this->tenantContext()->setPermissions([]);
     }
 
+    /**
+     * Like actAsAdminUser(), but for a non-admin editor acting on their own record —
+     * needed for the self-or-admin guard on userGet/userUpdate.
+     */
+    private function actAsEditorUser(User $user): void
+    {
+        static::getContainer()->get('security.token_storage')->setToken(
+            new UsernamePasswordToken($user, 'api', $user->getRoles()),
+        );
+        $this->tenantContext()->setRoles(['CONTENT_ADMIN']);
+        $this->tenantContext()->setPermissions(['content:read']);
+    }
+
     public function testRegisterRejectsNonAdmin(): void
     {
         $this->actAsEditor();
@@ -335,5 +348,158 @@ class AuthControllerTest extends WebTestCase
         $this->assertSame(200, $client->getResponse()->getStatusCode());
         $body = json_decode($client->getResponse()->getContent(), true);
         $this->assertNull($body['deactivatedAt']);
+    }
+
+    public function testUserGetAllowsSelfAccessForNonAdmin(): void
+    {
+        $editor = $this->createUser(['CONTENT_ADMIN'], ['content:read'], 'self-editor@example.com');
+        $this->actAsEditorUser($editor);
+
+        $client = static::getClient();
+        $client->request('GET', self::USERS_ENDPOINT . '/' . $editor->getId());
+
+        $this->assertSame(200, $client->getResponse()->getStatusCode());
+        $body = json_decode($client->getResponse()->getContent(), true);
+        $this->assertSame('self-editor@example.com', $body['email']);
+    }
+
+    public function testUserUpdateReturns404ForUnknownId(): void
+    {
+        $this->actAsAdmin();
+
+        $client = static::getClient();
+        $client->request('PATCH', self::USERS_ENDPOINT . '/550e8400-e29b-41d4-a716-446655440000', content: json_encode([
+            'email' => 'x@example.com',
+            'firstName' => 'X',
+            'lastName' => 'Y',
+        ]));
+
+        $this->assertSame(404, $client->getResponse()->getStatusCode());
+    }
+
+    public function testUserUpdateRejectsNonAdminNonSelf(): void
+    {
+        $target = $this->createUser(['CONTENT_ADMIN'], ['content:read'], 'target@example.com');
+        $other = $this->createUser(['CONTENT_ADMIN'], ['content:read'], 'other-editor@example.com');
+        $this->actAsEditorUser($other);
+
+        $client = static::getClient();
+        $client->request('PATCH', self::USERS_ENDPOINT . '/' . $target->getId(), content: json_encode([
+            'email' => 'target@example.com',
+            'firstName' => 'Changed',
+            'lastName' => 'Name',
+        ]));
+
+        $this->assertSame(403, $client->getResponse()->getStatusCode());
+    }
+
+    public function testUserUpdateAllowsSelfUpdateForNonAdmin(): void
+    {
+        $editor = $this->createUser(['CONTENT_ADMIN'], ['content:read'], 'self-editor@example.com');
+        $this->actAsEditorUser($editor);
+
+        $client = static::getClient();
+        $client->request('PATCH', self::USERS_ENDPOINT . '/' . $editor->getId(), content: json_encode([
+            'email' => 'self-editor-updated@example.com',
+            'firstName' => 'Updated',
+            'lastName' => 'Editor',
+        ]));
+
+        $this->assertSame(200, $client->getResponse()->getStatusCode());
+        $body = json_decode($client->getResponse()->getContent(), true);
+        $this->assertSame('self-editor-updated@example.com', $body['email']);
+        $this->assertSame('Updated', $body['firstName']);
+    }
+
+    public function testUserUpdateRejectsRoleChangeFromNonAdmin(): void
+    {
+        $editor = $this->createUser(['CONTENT_ADMIN'], ['content:read'], 'self-editor@example.com');
+        $this->actAsEditorUser($editor);
+
+        $client = static::getClient();
+        $client->request('PATCH', self::USERS_ENDPOINT . '/' . $editor->getId(), content: json_encode([
+            'email' => 'self-editor@example.com',
+            'firstName' => 'Self',
+            'lastName' => 'Editor',
+            'role' => 'admin',
+        ]));
+
+        $this->assertSame(403, $client->getResponse()->getStatusCode());
+
+        $this->em->clear();
+        $reloaded = $this->em->getRepository(User::class)->find($editor->getId());
+        $this->assertSame(['CONTENT_ADMIN'], $reloaded->getTenantRoles());
+    }
+
+    public function testUserUpdateAllowsAdminToChangeAnyUsersRole(): void
+    {
+        $target = $this->createUser(['CONTENT_ADMIN'], ['content:read'], 'target@example.com');
+        $this->actAsAdmin();
+
+        $client = static::getClient();
+        $client->request('PATCH', self::USERS_ENDPOINT . '/' . $target->getId(), content: json_encode([
+            'email' => 'target@example.com',
+            'firstName' => 'Target',
+            'lastName' => 'User',
+            'role' => 'admin',
+        ]));
+
+        $this->assertSame(200, $client->getResponse()->getStatusCode());
+        $body = json_decode($client->getResponse()->getContent(), true);
+        $this->assertSame(['ROLE_GROUP_ADMIN'], $body['roles']);
+    }
+
+    public function testUserUpdateRejectsDuplicateEmail(): void
+    {
+        $this->createUser(['CONTENT_ADMIN'], ['content:read'], 'taken@example.com');
+        $target = $this->createUser(['CONTENT_ADMIN'], ['content:read'], 'target@example.com');
+        $this->actAsAdmin();
+
+        $client = static::getClient();
+        $client->request('PATCH', self::USERS_ENDPOINT . '/' . $target->getId(), content: json_encode([
+            'email' => 'taken@example.com',
+            'firstName' => 'Target',
+            'lastName' => 'User',
+        ]));
+
+        $this->assertSame(409, $client->getResponse()->getStatusCode());
+    }
+
+    public function testUserUpdateValidatesRequiredFields(): void
+    {
+        $target = $this->createUser(['CONTENT_ADMIN'], ['content:read'], 'target@example.com');
+        $this->actAsAdmin();
+
+        $client = static::getClient();
+        $client->request('PATCH', self::USERS_ENDPOINT . '/' . $target->getId(), content: json_encode([
+            'email' => 'target@example.com',
+            'firstName' => '',
+            'lastName' => 'User',
+        ]));
+
+        $this->assertSame(422, $client->getResponse()->getStatusCode());
+        $body = json_decode($client->getResponse()->getContent(), true);
+        $this->assertArrayHasKey('firstName', $body['errors']);
+    }
+
+    public function testUserUpdateHashesNewPasswordWhenProvided(): void
+    {
+        $editor = $this->createUser(['CONTENT_ADMIN'], ['content:read'], 'self-editor@example.com');
+        $this->actAsEditorUser($editor);
+
+        $client = static::getClient();
+        $client->request('PATCH', self::USERS_ENDPOINT . '/' . $editor->getId(), content: json_encode([
+            'email' => 'self-editor@example.com',
+            'firstName' => 'Self',
+            'lastName' => 'Editor',
+            'password' => 'newpassword123',
+        ]));
+
+        $this->assertSame(200, $client->getResponse()->getStatusCode());
+
+        $this->em->clear();
+        $reloaded = $this->em->getRepository(User::class)->find($editor->getId());
+        $passwordHasher = static::getContainer()->get(UserPasswordHasherInterface::class);
+        $this->assertTrue($passwordHasher->isPasswordValid($reloaded, 'newpassword123'));
     }
 }

@@ -53,15 +53,25 @@ class VideoTranscriptionServiceTest extends TestCase
         return new DeferredResult($converter, new InMemoryRawResult());
     }
 
+    /** @return resource */
+    private function fakeStream(string $content = 'fake-mp4-binary-content')
+    {
+        $stream = fopen('php://memory', 'r+');
+        fwrite($stream, $content);
+        rewind($stream);
+
+        return $stream;
+    }
+
     public function testTranscribeReturnsTextOnSuccess(): void
     {
         $tmpAudio = tempnam(sys_get_temp_dir(), 'test_audio_');
 
         $this->filesystem
             ->expects($this->once())
-            ->method('read')
+            ->method('readStream')
             ->with(self::UPLOAD_ID . '/' . self::FILENAME)
-            ->willReturn('fake-mp4-binary-content');
+            ->willReturn($this->fakeStream());
 
         $this->audioExtractor
             ->expects($this->once())
@@ -97,7 +107,7 @@ class VideoTranscriptionServiceTest extends TestCase
     public function testTranscribeThrowsOnFilesystemReadFailure(): void
     {
         $this->filesystem
-            ->method('read')
+            ->method('readStream')
             ->willThrowException(UnableToReadFile::fromLocation(self::UPLOAD_ID . '/' . self::FILENAME));
 
         $this->expectException(TranscriptionException::class);
@@ -108,7 +118,7 @@ class VideoTranscriptionServiceTest extends TestCase
 
     public function testTranscribeThrowsOnAudioExtractionFailure(): void
     {
-        $this->filesystem->method('read')->willReturn('fake-content');
+        $this->filesystem->method('readStream')->willReturn($this->fakeStream('fake-content'));
 
         $this->audioExtractor
             ->method('extractAudio')
@@ -124,7 +134,7 @@ class VideoTranscriptionServiceTest extends TestCase
     {
         $tmpAudio = tempnam(sys_get_temp_dir(), 'test_audio_');
 
-        $this->filesystem->method('read')->willReturn('fake-content');
+        $this->filesystem->method('readStream')->willReturn($this->fakeStream('fake-content'));
         $this->audioExtractor->method('extractAudio')->willReturn($tmpAudio);
 
         $this->platform

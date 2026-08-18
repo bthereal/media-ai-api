@@ -79,6 +79,12 @@ ai:
                 distance: 'cosine'
                 setup_options:
                     vector_size: 1536
+                    # ivfflat's default probes=1 only scans one cluster and is
+                    # tuned for large tables — on a library this small it can miss
+                    # genuinely close matches entirely (observed: a query with 9
+                    # relevant candidates returning just 1). hnsw gives reliable
+                    # recall across dataset sizes with no size-dependent tuning.
+                    index_method: hnsw
 
     vectorizer:
         openai_ada:
